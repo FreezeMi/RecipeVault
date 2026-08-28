@@ -28,17 +28,18 @@ The application allows you to create, edit, manage, and discover your personal c
 - [Node.js](https://nodejs.org/) & [Express](https://expressjs.com/) (RESTful API)
 - [TypeScript](https://www.typescriptlang.org/)
 - [Prisma ORM](https://www.prisma.io/) (Database access & modeling)
-- [SQLite](https://www.sqlite.org/) (Local file-based database)
+- [Supabase (PostgreSQL)](https://supabase.com/) (Production database)
 
 ## 📋 Prerequisites
 
 - Node.js (v18 or higher)
 - npm (Node Package Manager)
+- A free [Supabase](https://supabase.com/) account and project.
 
-## �️ Installation & Setup
+## 🛠️ Local Installation & Setup
 
 1. **Install all dependencies:**
-   From the root directory, install all workspace packages (root, frontend, and backend) with a single command:
+   From the root directory, install all workspace packages with a single command:
    ```bash
    npm run install:all
    ```
@@ -46,32 +47,56 @@ The application allows you to create, edit, manage, and discover your personal c
 2. **Configure Environment Variables:**
    Create `.env` files in both `backend` and `frontend` folders using the provided `.env.example` templates.
    - In `backend/.env`, set your `SESSION_SECRET` (e.g., `SESSION_SECRET="your_secure_random_string"`).
-   - In `frontend/.env`, you can customize `VITE_API_URL` if needed.
+   - In `backend/.env`, set your `DATABASE_URL` to your Supabase PostgreSQL connection string (direct or session pooler string).
+   - In `frontend/.env`, you can leave `VITE_API_URL` as default for local development.
 
 3. **Initialize the Database:**
-   Navigate into the backend, initialize the SQLite database, and optionally seed it with starter recipes:
+   Navigate into the backend and initialize your Supabase database. This will push your schema to Supabase:
    ```bash
    cd backend
    npx prisma migrate dev --name init
+   ```
+   *(Optional)* Populate the database with starter recipes:
+   ```bash
    npm run db:seed
    ```
 
 4. **Create the Admin Account:**
-   While still in the `backend` folder, run the bootstrap script to securely create your personal login account:
+   While still in the `backend` folder, run the bootstrap script to securely create your personal login account in your Supabase database:
    ```bash
    npm run create-admin
    ```
    Follow the prompts to set your email and password (minimum 12 characters).
 
-5. **Start the Application:**
+5. **Start the Application Locally:**
    From the root directory, start both the frontend and backend concurrently:
    ```bash
    cd ..
    npm run dev
    ```
+   The application will now be running on `http://localhost:5173`. 
+   The backend API runs on `http://localhost:3001`.
 
-The application will now be running on `http://localhost:5173`. 
-The backend API runs on `http://localhost:3001`.
+## 🚀 Deployment
+
+This application is designed to be easily hosted on free-tier services.
+
+**1. Supabase (Database)**
+- Create a project on Supabase and grab the **Session Pooler** IPv4 Connection String (port 5432). 
+- Ensure your Prisma schema `provider` is set to `"postgresql"`.
+
+**2. Render (Backend)**
+- Create a new Web Service on Render pointing to your GitHub repository.
+- **Root Directory**: `backend`
+- **Build Command**: `npm install && npx prisma generate && npx prisma migrate deploy && npm run build`
+- **Start Command**: `npm run start`
+- **Environment Variables**: Add your `DATABASE_URL` (the Supabase session pooler string), `SESSION_SECRET`, and `FRONTEND_URL` (your Vercel URL, without the trailing slash).
+
+**3. Vercel (Frontend)**
+- Create a new project on Vercel pointing to your GitHub repository.
+- **Root Directory**: `frontend`
+- **Framework Preset**: Vite
+- **Environment Variables**: Add `VITE_API_URL` pointing to your Render backend URL (e.g., `https://your-backend.onrender.com/api`).
 
 ## 📸 Using Images
 
