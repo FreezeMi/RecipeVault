@@ -14,17 +14,33 @@ model Recipe {
   id           Int      @id @default(autoincrement())
   title        String
   description  String?
-  category     String?
+  tags         String?
   prepTime     Int?
   cookTime     Int?
   servings     Int?
   imageUrl     String?
   sourceUrl    String?
-  ingredients  String   // Will store as JSON string
-  instructions String   // Will store as JSON string
+  ingredients  String // Will store as JSON string
+  instructions String // Will store as JSON string
   notes        String?
   isFavorite   Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
 
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  sessions     Session[]
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}

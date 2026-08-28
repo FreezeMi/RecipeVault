@@ -3,8 +3,8 @@ import type { Recipe } from '../types';
 import RecipeCard from './RecipeCard';
 import { api } from '../services/api';
 import { motion, AnimatePresence } from 'motion/react';
-import { MagnifyingGlass, Plus, CookingPot } from '@phosphor-icons/react';
-
+import {MagnifyingGlassIcon, PlusIcon, CookingPotIcon} from '@phosphor-icons/react';
+import { useAuth } from './AuthContext';
 import { RECIPE_CATEGORIES } from '../constants';
 
 interface Props {
@@ -12,7 +12,7 @@ interface Props {
   onAdd: () => void;
 }
 
-const categories = ['All', ...RECIPE_CATEGORIES];
+const allTags = ['All', ...RECIPE_CATEGORIES];
 
 const RecipeList: React.FC<Props> = ({ onSelect, onAdd }) => {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
@@ -20,8 +20,10 @@ const RecipeList: React.FC<Props> = ({ onSelect, onAdd }) => {
   const [error, setError] = useState<string | null>(null);
   
   const [search, setSearch] = useState('');
-  const [category, setCategory] = useState('All');
+  const [selectedTag, setSelectedTag] = useState('All');
   const [showFavorites, setShowFavorites] = useState(false);
+
+  const { authenticated } = useAuth();
 
   const fetchRecipes = async () => {
     setLoading(true);
@@ -29,11 +31,11 @@ const RecipeList: React.FC<Props> = ({ onSelect, onAdd }) => {
     try {
       const data = await api.getRecipes({
         search: search || undefined,
-        category: category !== 'All' ? category : undefined,
+        tags: selectedTag !== 'All' ? selectedTag : undefined,
         favorite: showFavorites ? 'true' : undefined
       });
       setRecipes(data);
-    } catch (err) {
+    } catch {
       setError('Unable to load recipes. Please check that the backend is running.');
     } finally {
       setLoading(false);
@@ -45,14 +47,18 @@ const RecipeList: React.FC<Props> = ({ onSelect, onAdd }) => {
       fetchRecipes();
     }, 300);
     return () => clearTimeout(timer);
-  }, [search, category, showFavorites]);
+  }, [search, selectedTag, showFavorites]);
 
   const handleFavorite = async (e: React.MouseEvent, id: number) => {
     e.stopPropagation();
+    if (!authenticated) {
+      alert('You must be logged in to favorite a recipe.');
+      return;
+    }
     try {
       const updated = await api.toggleFavorite(id);
       setRecipes(recipes.map(r => r.id === id ? updated : r));
-    } catch (err) {
+    } catch {
       alert('Failed to toggle favorite');
     }
   };
@@ -64,21 +70,23 @@ const RecipeList: React.FC<Props> = ({ onSelect, onAdd }) => {
           <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-stone-900">Your Recipes</h2>
           <p className="text-stone-500 mt-1">Manage and discover your personal culinary vault.</p>
         </div>
-        <motion.button 
-          onClick={onAdd} 
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          className="flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-500 text-white px-5 py-2.5 rounded-full font-semibold shadow-md shadow-brand-500/20 transition-colors"
-        >
-          <Plus weight="bold" />
-          <span>New Recipe</span>
-        </motion.button>
+        {authenticated && (
+          <motion.button 
+            onClick={onAdd} 
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            className="flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-500 text-white px-5 py-2.5 rounded-full font-semibold shadow-md shadow-brand-500/20 transition-colors"
+          >
+            <PlusIcon weight="bold" />
+            <span>New Recipe</span>
+          </motion.button>
+        )}
       </div>
 
       <div className="glass !bg-white/90 p-2 rounded-2xl border border-white/60 shadow-sm flex flex-col md:flex-row gap-2">
         <div className="relative flex-1">
           <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-            <MagnifyingGlass size={20} className="text-stone-400" />
+            <MagnifyingGlassIcon size={20} className="text-stone-400" />
           </div>
           <input 
             type="text" 
@@ -92,6 +100,7 @@ const RecipeList: React.FC<Props> = ({ onSelect, onAdd }) => {
 
       <div className="flex flex-wrap gap-2">
         <button 
+          type="button"
           className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 shadow-sm border
             ${showFavorites 
               ? 'bg-accent-50 text-accent-600 border-accent-200' 
@@ -99,17 +108,18 @@ const RecipeList: React.FC<Props> = ({ onSelect, onAdd }) => {
             }`}
           onClick={() => setShowFavorites(!showFavorites)}
         >
-          Favorites ★
+          Favorites ❤️
         </button>
-        {categories.map(c => (
+        {allTags.map(c => (
           <button 
             key={c}
+            type="button"
             className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 shadow-sm border
-              ${category === c 
+              ${selectedTag === c 
                 ? 'bg-stone-800 text-white border-stone-800 shadow-md' 
                 : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-50 hover:text-stone-900'
               }`}
-            onClick={() => setCategory(c)}
+            onClick={() => setSelectedTag(c)}
           >
             {c}
           </button>
@@ -128,7 +138,7 @@ const RecipeList: React.FC<Props> = ({ onSelect, onAdd }) => {
             animate={{ rotate: 360 }} 
             transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
           >
-            <CookingPot size={48} weight="duotone" className="text-brand-500" />
+            <CookingPotIcon size={48} weight="duotone" className="text-brand-500" />
           </motion.div>
           <p className="text-stone-500 font-medium">Simmering recipes...</p>
         </div>
@@ -141,14 +151,15 @@ const RecipeList: React.FC<Props> = ({ onSelect, onAdd }) => {
           className="py-24 px-6 flex flex-col items-center justify-center text-center glass !bg-white/90 border border-white/60 rounded-3xl"
         >
           <div className="bg-brand-50 p-4 rounded-full mb-4 shadow-inner">
-            <CookingPot size={48} weight="duotone" className="text-brand-500" />
+            <CookingPotIcon size={48} weight="duotone" className="text-brand-500" />
           </div>
-          {search || category !== 'All' || showFavorites ? (
+          {search || selectedTag !== 'All' || showFavorites ? (
             <>
               <h3 className="text-xl font-bold text-stone-800 mb-2">No recipes found</h3>
               <p className="text-stone-500 mb-6 max-w-md">Try adjusting your search or filters to find what you're looking for.</p>
               <button 
-                onClick={() => { setSearch(''); setCategory('All'); setShowFavorites(false); }} 
+                type="button"
+                onClick={() => { setSearch(''); setSelectedTag('All'); setShowFavorites(false); }} 
                 className="bg-white border border-stone-200 text-stone-700 px-5 py-2 rounded-full font-medium hover:bg-stone-50 transition-colors shadow-sm"
               >
                 Clear all filters
@@ -157,13 +168,20 @@ const RecipeList: React.FC<Props> = ({ onSelect, onAdd }) => {
           ) : (
             <>
               <h3 className="text-xl font-bold text-stone-800 mb-2">Your vault is empty</h3>
-              <p className="text-stone-500 mb-6 max-w-md">Add your first recipe to get started on your culinary journey.</p>
-              <button 
-                onClick={onAdd} 
-                className="bg-brand-600 hover:bg-brand-500 text-white px-6 py-2.5 rounded-full font-medium transition-colors shadow-md shadow-brand-500/20"
-              >
-                Add First Recipe
-              </button>
+              {authenticated ? (
+                <>
+                  <p className="text-stone-500 mb-6 max-w-md">Add your first recipe to get started on your culinary journey.</p>
+                  <button 
+                    type="button"
+                    onClick={onAdd} 
+                    className="bg-brand-600 hover:bg-brand-500 text-white px-6 py-2.5 rounded-full font-medium transition-colors shadow-md shadow-brand-500/20"
+                  >
+                    Add First Recipe
+                  </button>
+                </>
+              ) : (
+                <p className="text-stone-500 mb-6 max-w-md">No recipes have been added yet.</p>
+              )}
             </>
           )}
         </motion.div>

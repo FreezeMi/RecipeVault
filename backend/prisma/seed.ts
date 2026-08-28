@@ -9,7 +9,7 @@ async function main() {
     {
       title: 'Thai Peanut Chicken',
       description: 'This delicious Thai Peanut Chicken is positively PACKED with flavor! Quick and easy to make and thoroughly satisfying!',
-      category: 'Asian',
+      tags: JSON.stringify(['Asian', 'Chicken', 'Dinner']),
       prepTime: 10,
       cookTime: 30,
       servings: 4,
@@ -42,7 +42,7 @@ async function main() {
     {
       title: 'Easy 15-Minute Sweet and Sour Chicken',
       description: 'Faster, tastier, healthier, and better than takeout! Perfect for busy weeknights when you need a quick dinner.',
-      category: 'Asian',
+      tags: JSON.stringify(['Asian', 'Chicken', 'Dinner']),
       prepTime: 5,
       cookTime: 10,
       servings: 4,

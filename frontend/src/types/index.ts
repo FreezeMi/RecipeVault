@@ -8,7 +8,7 @@ export interface Recipe {
   id: number;
   title: string;
   description: string | null;
-  category: string | null;
+  tags: string | null;
   prepTime: number | null;
   cookTime: number | null;
   servings: number | null;
@@ -25,7 +25,7 @@ export interface Recipe {
 export interface RecipeFormData {
   title: string;
   description: string;
-  category: string;
+  tags: string[];
   prepTime: number | '';
   cookTime: number | '';
   servings: number | '';

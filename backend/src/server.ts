@@ -1,25 +1,55 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import cookieParser from 'cookie-parser';
 import { PrismaClient } from '@prisma/client';
+import authRouter, { requireAuth } from './auth';
 
 dotenv.config();
 
 const app = express();
+app.disable('x-powered-by');
+
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors());
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+
+app.use(cors({
+  origin: FRONTEND_URL,
+  credentials: true
+}));
 app.use(express.json());
+app.use(cookieParser());
+
+app.use('/api/auth', authRouter);
 
 // Get all recipes
+const getQueryString = (value: unknown): string | undefined => {
+  if (Array.isArray(value)) {
+    return value[0] ? String(value[0]) : undefined;
+  }
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+
+  return undefined;
+};
+
 app.get('/api/recipes', async (req: Request, res: Response) => {
   try {
-    const { search, category, favorite } = req.query;
+    const search = getQueryString(req.query.search);
+    const tags = getQueryString(req.query.tags);
+    const favorite = getQueryString(req.query.favorite);
     let where: any = {};
     
-    if (category) {
-      where.category = String(category);
+    if (tags) {
+      where.tags = { contains: tags };
     }
     
     if (favorite === 'true') {
@@ -28,9 +58,10 @@ app.get('/api/recipes', async (req: Request, res: Response) => {
     
     if (search) {
       where.OR = [
-        { title: { contains: String(search) } },
-        { description: { contains: String(search) } },
-        { ingredients: { contains: String(search) } }
+        { title: { contains: search } },
+        { description: { contains: search } },
+        { ingredients: { contains: search } },
+        { tags: { contains: search } }
       ];
     }
 
@@ -45,7 +76,7 @@ app.get('/api/recipes', async (req: Request, res: Response) => {
 // Get a single recipe
 app.get('/api/recipes/:id', async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = Number.parseInt(req.params.id as string, 10);
     const recipe = await prisma.recipe.findUnique({ where: { id } });
     
     if (!recipe) {
@@ -61,9 +92,9 @@ app.get('/api/recipes/:id', async (req: Request, res: Response) => {
 });
 
 // Create a recipe
-app.post('/api/recipes', async (req: Request, res: Response) => {
+app.post('/api/recipes', requireAuth, async (req: Request, res: Response) => {
   try {
-    const { title, description, category, prepTime, cookTime, servings, imageUrl, ingredients, instructions, notes, isFavorite } = req.body;
+    const { title, description, tags, prepTime, cookTime, servings, imageUrl, ingredients, instructions, notes, isFavorite } = req.body;
     
     if (!title) {
        res.status(400).json({ error: 'Title is required' });
@@ -74,10 +105,10 @@ app.post('/api/recipes', async (req: Request, res: Response) => {
       data: {
         title,
         description,
-        category,
-        prepTime: prepTime ? parseInt(prepTime, 10) : null,
-        cookTime: cookTime ? parseInt(cookTime, 10) : null,
-        servings: servings ? parseInt(servings, 10) : null,
+        tags: JSON.stringify(tags || []),
+        prepTime: prepTime ? Number.parseInt(prepTime, 10) : null,
+        cookTime: cookTime ? Number.parseInt(cookTime, 10) : null,
+        servings: servings ? Number.parseInt(servings, 10) : null,
         imageUrl,
         ingredients: JSON.stringify(ingredients || []),
         instructions: JSON.stringify(instructions || []),
@@ -94,10 +125,10 @@ app.post('/api/recipes', async (req: Request, res: Response) => {
 });
 
 // Update a recipe
-app.put('/api/recipes/:id', async (req: Request, res: Response) => {
+app.put('/api/recipes/:id', requireAuth, async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
-    const { title, description, category, prepTime, cookTime, servings, imageUrl, ingredients, instructions, notes, isFavorite } = req.body;
+    const id = Number.parseInt(req.params.id as string, 10);
+    const { title, description, tags, prepTime, cookTime, servings, imageUrl, ingredients, instructions, notes, isFavorite } = req.body;
     
     if (!title) {
        res.status(400).json({ error: 'Title is required' });
@@ -109,10 +140,10 @@ app.put('/api/recipes/:id', async (req: Request, res: Response) => {
       data: {
         title,
         description,
-        category,
-        prepTime: prepTime !== undefined ? parseInt(prepTime, 10) : null,
-        cookTime: cookTime !== undefined ? parseInt(cookTime, 10) : null,
-        servings: servings !== undefined ? parseInt(servings, 10) : null,
+        tags: JSON.stringify(tags || []),
+        prepTime: prepTime !== undefined ? Number.parseInt(prepTime, 10) : null,
+        cookTime: cookTime !== undefined ? Number.parseInt(cookTime, 10) : null,
+        servings: servings !== undefined ? Number.parseInt(servings, 10) : null,
         imageUrl,
         ingredients: JSON.stringify(ingredients || []),
         instructions: JSON.stringify(instructions || []),
@@ -129,9 +160,9 @@ app.put('/api/recipes/:id', async (req: Request, res: Response) => {
 });
 
 // Delete a recipe
-app.delete('/api/recipes/:id', async (req: Request, res: Response) => {
+app.delete('/api/recipes/:id', requireAuth, async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = Number.parseInt(req.params.id as string, 10);
     await prisma.recipe.delete({ where: { id } });
     res.status(200).json({ success: true });
   } catch (error) {
@@ -141,9 +172,9 @@ app.delete('/api/recipes/:id', async (req: Request, res: Response) => {
 });
 
 // Toggle favorite
-app.patch('/api/recipes/:id/favorite', async (req: Request, res: Response) => {
+app.patch('/api/recipes/:id/favorite', requireAuth, async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = Number.parseInt(req.params.id as string, 10);
     const recipe = await prisma.recipe.findUnique({ where: { id } });
     
     if (!recipe) {

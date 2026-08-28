@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Recipe } from '../types';
-import { Heart, Clock, Users } from '@phosphor-icons/react';
+import {HeartIcon, ClockIcon, UsersIcon} from '@phosphor-icons/react';
 import { motion } from 'motion/react';
 
 interface Props {
@@ -35,21 +35,34 @@ const RecipeCard: React.FC<Props> = ({ recipe, onClick, onFavorite, index = 0 })
           </div>
         )}
         
-        {/* Category Badge */}
-        {recipe.category && (
-          <div className="absolute top-4 left-4 glass px-3 py-1 rounded-full text-xs font-bold text-stone-800 shadow-sm backdrop-blur-md tracking-wide">
-            {recipe.category}
+        {/* Tags Badge */}
+        {recipe.tags && (
+          <div className="absolute top-4 left-4 flex gap-1 flex-wrap">
+            {(() => {
+              try {
+                const parsedTags = JSON.parse(recipe.tags);
+                if (Array.isArray(parsedTags) && parsedTags.length > 0) {
+                  return (
+                    <div className="glass px-3 py-1 rounded-full text-xs font-bold text-stone-800 shadow-sm backdrop-blur-md tracking-wide">
+                      {parsedTags[0]}
+                      {parsedTags.length > 1 && <span className="ml-1 opacity-70">+{parsedTags.length - 1}</span>}
+                    </div>
+                  );
+                }
+              } catch (e) { console.error(e); }
+              return null;
+            })()}
           </div>
         )}
 
         {/* Favorite Button */}
-        <button 
+        <button type="button" 
           className={`absolute top-4 right-4 p-2 rounded-full glass backdrop-blur-md transition-all active:scale-95 shadow-sm
             ${recipe.isFavorite ? 'text-accent-500' : 'text-stone-400 hover:text-stone-600'}`}
           onClick={(e) => onFavorite(e, recipe.id)}
           title={recipe.isFavorite ? "Unfavorite" : "Favorite"}
         >
-          <Heart size={20} weight={recipe.isFavorite ? "fill" : "bold"} />
+          <HeartIcon size={20} weight={recipe.isFavorite ? "fill" : "bold"} />
         </button>
       </div>
       
@@ -67,7 +80,7 @@ const RecipeCard: React.FC<Props> = ({ recipe, onClick, onFavorite, index = 0 })
         <div className="flex items-center gap-4 text-xs font-medium text-stone-500 pt-4 border-t border-stone-100">
           {(recipe.prepTime !== null || recipe.cookTime !== null) && (
             <div className="flex items-center gap-1.5">
-              <Clock size={16} weight="duotone" className="text-brand-500" />
+              <ClockIcon size={16} weight="duotone" className="text-brand-500" />
               <span>
                 {((recipe.prepTime || 0) + (recipe.cookTime || 0))} min
               </span>
@@ -76,7 +89,7 @@ const RecipeCard: React.FC<Props> = ({ recipe, onClick, onFavorite, index = 0 })
           
           {recipe.servings !== null && (
             <div className="flex items-center gap-1.5">
-              <Users size={16} weight="duotone" className="text-brand-500" />
+              <UsersIcon size={16} weight="duotone" className="text-brand-500" />
               <span>{recipe.servings} servings</span>
             </div>
           )}

@@ -4,10 +4,11 @@ A beautifully designed, personal full-stack recipe management application built 
 
 The application allows you to create, edit, manage, and discover your personal culinary vault. Built completely from scratch with a clean, mellow-white aesthetic, featuring satisfying animations, comprehensive filtering, and local SQLite data persistence.
 
-## 🚀 Features
+## ✨ Features
 
 - **Full CRUD functionality:** Add, view, edit, and delete recipes.
-- **Categorization & Favorites:** Filter recipes by favorites or 27 different categories (e.g., Breakfast, Dessert, Seafood, Vegan, Asian, Mediterranean).
+- **Authentication:** Protected recipe management. Public visitors can view and search recipes, while only the authenticated admin can add, edit, or delete them.
+- **Multi-Tag System & Favorites:** Assign multiple tags to any recipe (e.g., Breakfast, Dessert, Seafood, Vegan) and filter your vault effortlessly. Mark your best recipes as favorites.
 - **Smart Search:** Quickly find recipes by title or ingredients.
 - **Modern UI/UX:** Built with Tailwind CSS v4 and Framer Motion for a premium, agency-quality bright-mode aesthetic with satisfying micro-interactions.
 - **Responsive Design:** Works flawlessly on desktop and mobile browsers.
@@ -34,7 +35,7 @@ The application allows you to create, edit, manage, and discover your personal c
 - Node.js (v18 or higher)
 - npm (Node Package Manager)
 
-## 💻 Installation & Setup
+## �️ Installation & Setup
 
 1. **Install all dependencies:**
    From the root directory, install all workspace packages (root, frontend, and backend) with a single command:
@@ -42,18 +43,30 @@ The application allows you to create, edit, manage, and discover your personal c
    npm run install:all
    ```
 
-2. **Initialize the Database:**
-   Navigate into the backend, initialize the SQLite database, and seed it with starter recipes:
+2. **Configure Environment Variables:**
+   Create `.env` files in both `backend` and `frontend` folders using the provided `.env.example` templates.
+   - In `backend/.env`, set your `SESSION_SECRET` (e.g., `SESSION_SECRET="your_secure_random_string"`).
+   - In `frontend/.env`, you can customize `VITE_API_URL` if needed.
+
+3. **Initialize the Database:**
+   Navigate into the backend, initialize the SQLite database, and optionally seed it with starter recipes:
    ```bash
    cd backend
    npx prisma migrate dev --name init
    npm run db:seed
-   cd ..
    ```
 
-3. **Start the Application:**
+4. **Create the Admin Account:**
+   While still in the `backend` folder, run the bootstrap script to securely create your personal login account:
+   ```bash
+   npm run create-admin
+   ```
+   Follow the prompts to set your email and password (minimum 12 characters).
+
+5. **Start the Application:**
    From the root directory, start both the frontend and backend concurrently:
    ```bash
+   cd ..
    npm run dev
    ```
 
@@ -66,10 +79,10 @@ To keep the application simple and self-contained without needing cloud storage 
 - **Web Images:** Find an image on Google, Imgur, or Unsplash, right-click, and select "Copy Image Address", then paste it into the recipe form.
 - **Placeholders:** Don't have a picture? Paste `https://picsum.photos/800/600` into the image box, and it will automatically generate a beautiful, random, high-quality stock photo for your recipe.
 
-## ⚙️ Customization
+## 🎨 Customization
 
-**Recipe Categories**
-The categories (tags) used for recipes are fully customizable. You can add, remove, or re-order the tags by editing a single array located at:
+**Recipe Tags**
+The tags used for classifying recipes are fully customizable. You can add, remove, or re-order the tags by editing a single array located at:
 `frontend/src/constants.ts`
 Any changes made to this file will immediately reflect in both the recipe search filters and the recipe creation form.
 
@@ -97,7 +110,9 @@ RecipeApp/
 │   │   ├── seed.ts          # Seed data script
 │   │   └── dev.db           # Local SQLite database file
 │   ├── src/
-│   │   └── server.ts        # Express REST API endpoints
+│   │   ├── server.ts        # Express REST API endpoints
+│   │   ├── auth.ts          # Authentication routes & logic
+│   │   └── scripts/         # Admin creation CLI scripts
 │   ├── test.ts              # Native Node.js API test suite
 │   └── package.json
 └── frontend/
@@ -106,7 +121,7 @@ RecipeApp/
     │   ├── services/        # API wrapper functions
     │   ├── types/           # TypeScript interfaces
     │   ├── App.tsx          # Main application router/shell
-    │   ├── constants.ts     # Editable global constants (e.g. Categories)
+    │   ├── constants.ts     # Editable global constants (e.g. Tags)
     │   ├── index.css        # Tailwind CSS definitions
     │   └── main.tsx         # React mount point
     ├── index.html           # HTML entry point

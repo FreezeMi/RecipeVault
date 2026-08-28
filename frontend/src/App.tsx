@@ -2,14 +2,19 @@ import { useState } from 'react';
 import RecipeList from './components/RecipeList';
 import RecipeDetail from './components/RecipeDetail';
 import RecipeForm from './components/RecipeForm';
+import Login from './components/Login';
+import Account from './components/Account';
 import { Recipe } from './types';
-import { CookingPot } from '@phosphor-icons/react';
+import {CookingPotIcon, UserIcon, SignInIcon} from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useAuth } from './components/AuthContext';
 
 function App() {
-  const [view, setView] = useState<'list' | 'detail' | 'form'>('list');
+  const [view, setView] = useState<'list' | 'detail' | 'form' | 'login' | 'account'>('list');
   const [selectedRecipeId, setSelectedRecipeId] = useState<number | null>(null);
   const [editingRecipe, setEditingRecipe] = useState<Recipe | undefined>(undefined);
+  
+  const { authenticated, logout } = useAuth();
 
   const handleSelectRecipe = (id: number) => {
     setSelectedRecipeId(id);
@@ -44,6 +49,10 @@ function App() {
     setView('list');
   };
 
+  const handleAuthSuccess = () => {
+    setView('list');
+  };
+
   return (
     <div className="min-h-[100dvh] bg-stone-50 text-stone-900 font-sans selection:bg-brand-500/30 selection:text-brand-900 relative z-0 overflow-x-hidden">
       
@@ -62,12 +71,40 @@ function App() {
             whileTap={{ scale: 0.98 }}
           >
             <div className="bg-brand-500 text-white p-2 rounded-xl shadow-lg shadow-brand-500/30 group-hover:bg-brand-600 transition-colors">
-              <CookingPot size={24} weight="duotone" />
+              <CookingPotIcon size={24} weight="duotone" />
             </div>
             <h1 className="text-xl md:text-2xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-stone-800 to-stone-500 drop-shadow-sm">
               Recipe Vault
             </h1>
           </motion.div>
+
+          <div className="flex items-center gap-4">
+            {authenticated ? (
+              <>
+                <button type="button"
+                  onClick={() => setView('account')}
+                  className={`font-medium flex items-center gap-1.5 transition-colors ${view === 'account' ? 'text-brand-600' : 'text-stone-600 hover:text-stone-900'}`}
+                >
+                  <UserIcon size={18} />
+                  <span>Account</span>
+                </button>
+                <button type="button"
+                  onClick={async () => { await logout(); setView('list'); }}
+                  className="font-medium text-stone-600 hover:text-stone-900 transition-colors"
+                >
+                  Logout
+                </button>
+              </>
+            ) : (
+              <button type="button"
+                onClick={() => setView('login')}
+                className={`font-medium flex items-center gap-1.5 transition-colors ${view === 'login' ? 'text-brand-600' : 'text-stone-600 hover:text-stone-900'}`}
+              >
+                <SignInIcon size={18} />
+                <span>Sign in</span>
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -105,7 +142,7 @@ function App() {
             </motion.div>
           )}
           
-          {view === 'form' && (
+          {view === 'form' && authenticated && (
             <motion.div
               key="form"
               initial={{ opacity: 0, scale: 0.98 }}
@@ -120,6 +157,30 @@ function App() {
               />
             </motion.div>
           )}
+
+          {view === 'login' && !authenticated && (
+            <motion.div
+              key="login"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <Login onSuccess={handleAuthSuccess} />
+            </motion.div>
+          )}
+
+          {view === 'account' && authenticated && (
+            <motion.div
+              key="account"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <Account onSuccess={handleAuthSuccess} />
+            </motion.div>
+          )}
         </AnimatePresence>
       </main>
     </div>
@@ -127,3 +188,4 @@ function App() {
 }
 
 export default App;
+
