@@ -1,0 +1,30 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Recipe {
+  id           Int      @id @default(autoincrement())
+  title        String
+  description  String?
+  category     String?
+  prepTime     Int?
+  cookTime     Int?
+  servings     Int?
+  imageUrl     String?
+  sourceUrl    String?
+  ingredients  String   // Will store as JSON string
+  instructions String   // Will store as JSON string
+  notes        String?
+  isFavorite   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+

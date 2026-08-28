@@ -1,0 +1,25 @@
+export const RECIPE_CATEGORIES = [
+  'Breakfast',
+  'Lunch', 
+  'Dinner',
+  'Dessert',
+  'Snack',
+  'Appetizer',
+  'Soup',
+  'Salad',
+  'Pasta',
+  'Pizza',
+  'Seafood',
+  'Chicken',
+  'Beef',
+  'Pork',
+  'Gluten-Free',
+  'Asian',
+  'Mexican',
+  'Italian',
+  'Mediterranean',
+  'Indian',
+  'Baking',
+  'Other'
+];
+
