@@ -113,11 +113,21 @@ Any changes made to this file will immediately reflect in both the recipe search
 
 ## 🧪 Testing
 
-The backend includes a native Node.js test suite to verify the REST API functionality. It tests the full lifecycle of recipe CRUD operations, searching, and filtering.
+The project includes comprehensive testing for both the frontend and backend, automated via a **GitHub Actions CI Pipeline**. Every push to the repository automatically spins up a PostgreSQL service and runs the full test suite.
+
+### Frontend Tests
+The frontend uses [Vitest](https://vitest.dev/) and [React Testing Library](https://testing-library.com/react) to verify component rendering and user interactions in a simulated DOM environment (`jsdom`).
+
+To run the frontend tests:
+```bash
+cd frontend
+npm run test
+```
+
+### Backend Tests
+The backend uses the native Node.js test runner and [Supertest](https://github.com/ladjs/supertest) to verify the REST API endpoints and authentication logic.
 
 To run the backend tests:
-1. Ensure the development server is running (`npm run dev`) or start the backend manually.
-2. Open a new terminal and run:
 ```bash
 cd backend
 npm run test
@@ -127,27 +137,32 @@ npm run test
 
 ```text
 RecipeApp/
+├── .github/
+│   └── workflows/
+│       └── ci.yml           # GitHub Actions CI pipeline
 ├── package.json             # Root workspace manager (concurrently scripts)
 ├── .gitignore               # Root gitignore rules
 ├── backend/
 │   ├── prisma/
-│   │   ├── schema.prisma    # SQLite database schema
-│   │   ├── seed.ts          # Seed data script
-│   │   └── dev.db           # Local SQLite database file
+│   │   ├── schema.prisma    # PostgreSQL database schema
+│   │   └── seed.ts          # Seed data script
 │   ├── src/
 │   │   ├── server.ts        # Express REST API endpoints
 │   │   ├── auth.ts          # Authentication routes & logic
 │   │   └── scripts/         # Admin creation CLI scripts
-│   ├── test.ts              # Native Node.js API test suite
+│   ├── tests/
+│   │   └── api/             # Backend API & Authentication tests
 │   └── package.json
 └── frontend/
     ├── src/
+    │   ├── __tests__/       # Frontend component tests
     │   ├── components/      # React functional components
     │   ├── services/        # API wrapper functions
     │   ├── types/           # TypeScript interfaces
     │   ├── App.tsx          # Main application router/shell
     │   ├── constants.ts     # Editable global constants (e.g. Tags)
     │   ├── index.css        # Tailwind CSS definitions
+    │   ├── setupTests.ts    # Vitest testing environment setup
     │   └── main.tsx         # React mount point
     ├── index.html           # HTML entry point
     ├── vite.config.ts       # Vite configuration
