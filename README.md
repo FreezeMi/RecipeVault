@@ -7,11 +7,12 @@ The application allows you to create, edit, manage, and discover your personal c
 ## ✨ Features
 
 - **Full CRUD functionality:** Add, view, edit, and delete recipes.
+- **Data Backup & Restore:** Export your entire vault as a JSON file to keep your data safe, and seamlessly upload backups later (features smart duplicate prevention).
 - **Authentication:** Protected recipe management. Public visitors can view and search recipes, while only the authenticated admin can add, edit, or delete them.
 - **Multi-Tag System & Favorites:** Assign multiple tags to any recipe (e.g., Breakfast, Dessert, Seafood, Vegan) and filter your vault effortlessly. Mark your best recipes as favorites.
 - **Smart Search:** Quickly find recipes by title or ingredients.
 - **Modern UI/UX:** Built with Tailwind CSS v4 and Framer Motion for a premium, agency-quality bright-mode aesthetic with satisfying micro-interactions.
-- **Responsive Design:** Works flawlessly on desktop and mobile browsers.
+- **Responsive Design:** Works flawlessly on desktop and mobile browsers. Heavily optimized to disable expensive visual effects (like frosted glass) on smartphones to ensure buttery-smooth scrolling.
 - **Easy Images:** No complex file uploading required—simply paste direct image URLs or use placeholders (e.g. `https://picsum.photos/800/600`).
 
 ## 🛠️ Technology Stack
