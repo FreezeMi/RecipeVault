@@ -237,7 +237,7 @@ const RecipeForm: React.FC<Props> = ({ recipe, onSave, onCancel }) => {
               <input id="sourceUrl" type="url" name="sourceUrl" value={formData.sourceUrl} onChange={handleChange} className={inputClass} placeholder="https://www.daringgourmet.com/..." />
             </div>
 
-            <div className="grid grid-cols-3 gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
               <div>
                 <label htmlFor="prepTime" className={labelClass}>Prep (min)</label>
                 <input id="prepTime" type="number" name="prepTime" value={formData.prepTime} onChange={handleChange} min="0" className={inputClass} placeholder="15" />
@@ -262,13 +262,17 @@ const RecipeForm: React.FC<Props> = ({ recipe, onSave, onCancel }) => {
                 const ingredientKey = `${ing.quantity || 'qty'}-${ing.unit || 'unit'}-${ing.name || 'ingredient'}`;
 
                 return (
-                  <div key={ingredientKey} className="flex gap-2 items-center group">
-                    <input type="text" placeholder="Qty (200)" aria-label="Ingredient quantity" value={ing.quantity} onChange={(e) => handleIngredientChange(index, 'quantity', e.target.value)} className={`${baseInputClass} w-20 md:w-24 shrink-0`} />
-                    <input type="text" placeholder="Unit (g)" aria-label="Ingredient unit" value={ing.unit} onChange={(e) => handleIngredientChange(index, 'unit', e.target.value)} className={`${baseInputClass} w-20 md:w-24 shrink-0`} />
-                    <input type="text" placeholder="Ingredient name (flour)" aria-label="Ingredient name" value={ing.name} onChange={(e) => handleIngredientChange(index, 'name', e.target.value)} className={`${baseInputClass} flex-1 min-w-0`} />
-                    <button type="button" onClick={() => removeIngredient(index)} aria-label="Remove ingredient" className="p-2 text-stone-400 hover:text-red-500 transition-colors opacity-50 group-hover:opacity-100 shrink-0">
-                      <XIcon size={20} weight="bold" />
-                    </button>
+                  <div key={ingredientKey} className="flex flex-col sm:flex-row gap-2 items-start sm:items-center group">
+                    <div className="flex gap-2 w-full sm:w-auto">
+                      <input type="text" placeholder="Qty (200)" aria-label="Ingredient quantity" value={ing.quantity} onChange={(e) => handleIngredientChange(index, 'quantity', e.target.value)} className={`${baseInputClass} flex-1 sm:flex-none sm:w-20 md:w-24 shrink-0`} />
+                      <input type="text" placeholder="Unit (g)" aria-label="Ingredient unit" value={ing.unit} onChange={(e) => handleIngredientChange(index, 'unit', e.target.value)} className={`${baseInputClass} flex-1 sm:flex-none sm:w-20 md:w-24 shrink-0`} />
+                    </div>
+                    <div className="flex gap-2 w-full sm:w-auto sm:flex-1 items-center">
+                      <input type="text" placeholder="Ingredient name (flour)" aria-label="Ingredient name" value={ing.name} onChange={(e) => handleIngredientChange(index, 'name', e.target.value)} className={`${baseInputClass} flex-1 min-w-0`} />
+                      <button type="button" onClick={() => removeIngredient(index)} aria-label="Remove ingredient" className="p-2 text-stone-400 hover:text-red-500 transition-colors sm:opacity-50 group-hover:opacity-100 shrink-0">
+                        <XIcon size={20} weight="bold" />
+                      </button>
+                    </div>
                   </div>
                 );
               })}

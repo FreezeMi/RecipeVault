@@ -83,7 +83,7 @@ const RecipeList: React.FC<Props> = ({ onSelect, onAdd }) => {
         )}
       </div>
 
-      <div className="glass !bg-white/90 p-2 rounded-2xl border border-white/60 shadow-sm flex flex-col md:flex-row gap-2">
+      <div className="bg-white/90 md:glass p-2 rounded-2xl border border-white/60 shadow-sm flex flex-col md:flex-row gap-2">
         <div className="relative flex-1">
           <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
             <MagnifyingGlassIcon size={20} className="text-stone-400" />
@@ -148,7 +148,7 @@ const RecipeList: React.FC<Props> = ({ onSelect, onAdd }) => {
         <motion.div 
           initial={{ opacity: 0, scale: 0.95 }} 
           animate={{ opacity: 1, scale: 1 }} 
-          className="py-24 px-6 flex flex-col items-center justify-center text-center glass !bg-white/90 border border-white/60 rounded-3xl"
+          className="py-24 px-6 flex flex-col items-center justify-center text-center bg-white/90 md:glass border border-white/60 rounded-3xl"
         >
           <div className="bg-brand-50 p-4 rounded-full mb-4 shadow-inner">
             <CookingPotIcon size={48} weight="duotone" className="text-brand-500" />
