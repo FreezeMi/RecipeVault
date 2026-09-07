@@ -171,6 +171,61 @@ app.delete('/api/recipes/:id', requireAuth, async (req: Request, res: Response) 
   }
 });
 
+// Upload multiple recipes
+const getUploadedRecipeData = (recipe: any) => {
+  if (!recipe.title) {
+    return null;
+  }
+
+  return {
+    title: recipe.title,
+    description: recipe.description || null,
+    tags: typeof recipe.tags === 'string' ? recipe.tags : JSON.stringify(recipe.tags || []),
+    prepTime: recipe.prepTime ? Number.parseInt(recipe.prepTime, 10) : null,
+    cookTime: recipe.cookTime ? Number.parseInt(recipe.cookTime, 10) : null,
+    servings: recipe.servings ? Number.parseInt(recipe.servings, 10) : null,
+    imageUrl: recipe.imageUrl || null,
+    sourceUrl: recipe.sourceUrl || null,
+    ingredients: typeof recipe.ingredients === 'string' ? recipe.ingredients : JSON.stringify(recipe.ingredients || []),
+    instructions: typeof recipe.instructions === 'string' ? recipe.instructions : JSON.stringify(recipe.instructions || []),
+    notes: recipe.notes || null,
+    isFavorite: recipe.isFavorite || false
+  };
+};
+
+app.post('/api/recipes/upload', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const recipes = req.body;
+    if (!Array.isArray(recipes)) {
+      res.status(400).json({ error: 'Expected an array of recipes' });
+      return;
+    }
+
+    const createdRecipes = [];
+    for (const recipe of recipes) {
+      const data = getUploadedRecipeData(recipe);
+      if (!data) continue;
+
+      // Check if recipe with exact same title already exists
+      const existing = await prisma.recipe.findFirst({
+        where: { title: data.title }
+      });
+
+      if (existing) {
+        continue;
+      }
+
+      const created = await prisma.recipe.create({ data });
+      createdRecipes.push(created);
+    }
+    
+    res.status(201).json({ success: true, count: createdRecipes.length });
+  } catch (error) {
+    console.error('Error uploading recipes:', error);
+    res.status(500).json({ error: 'Failed to upload recipes' });
+  }
+});
+
 // Toggle favorite
 app.patch('/api/recipes/:id/favorite', requireAuth, async (req: Request, res: Response) => {
   try {
