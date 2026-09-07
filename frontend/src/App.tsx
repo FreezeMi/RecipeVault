@@ -78,21 +78,22 @@ function App() {
             </h1>
           </motion.div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 sm:gap-4">
             {authenticated ? (
               <>
                 <button type="button"
                   onClick={() => setView('account')}
                   className={`font-medium flex items-center gap-1.5 transition-colors ${view === 'account' ? 'text-brand-600' : 'text-stone-600 hover:text-stone-900'}`}
                 >
-                  <UserIcon size={18} />
-                  <span>Account</span>
+                  <UserIcon size={20} />
+                  <span className="hidden sm:inline">Account</span>
                 </button>
                 <button type="button"
                   onClick={async () => { await logout(); setView('list'); }}
                   className="font-medium text-stone-600 hover:text-stone-900 transition-colors"
                 >
-                  Logout
+                  <span className="hidden sm:inline">Logout</span>
+                  <span className="sm:hidden text-sm">Log out</span>
                 </button>
               </>
             ) : (
@@ -100,8 +101,8 @@ function App() {
                 onClick={() => setView('login')}
                 className={`font-medium flex items-center gap-1.5 transition-colors ${view === 'login' ? 'text-brand-600' : 'text-stone-600 hover:text-stone-900'}`}
               >
-                <SignInIcon size={18} />
-                <span>Sign in</span>
+                <SignInIcon size={20} />
+                <span className="hidden sm:inline">Sign in</span>
               </button>
             )}
           </div>

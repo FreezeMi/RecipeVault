@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useAuth } from './AuthContext';
+import { api } from '../services/api';
 
 interface AccountProps {
   readonly onSuccess: () => void;
@@ -12,6 +13,68 @@ export default function Account({ onSuccess }: AccountProps) {
   const [newPassword, setNewPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ text: string, type: 'error' | 'success' } | null>(null);
+  
+  const [dataMessage, setDataMessage] = useState<{ text: string, type: 'error' | 'success' } | null>(null);
+  const [dataLoading, setDataLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleDownloadAll = async () => {
+    try {
+      setDataLoading(true);
+      setDataMessage(null);
+      const recipes = await api.getRecipes();
+      const content = JSON.stringify(recipes, null, 2);
+      const blob = new Blob([content], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `recipe_vault_backup_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setDataMessage({ text: `Successfully downloaded ${recipes.length} recipes.`, type: 'success' });
+    } catch (err) {
+      console.error(err);
+      setDataMessage({ text: 'Failed to download recipes.', type: 'error' });
+    } finally {
+      setDataLoading(false);
+    }
+  };
+
+  const handleUploadClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setDataLoading(true);
+      setDataMessage(null);
+      
+      const text = await file.text();
+      const recipes = JSON.parse(text);
+      
+      if (!Array.isArray(recipes)) {
+        throw new Error('Invalid JSON format: expected an array of recipes.');
+      }
+      
+      const response = await api.uploadRecipes(recipes);
+      setDataMessage({ text: `Successfully imported ${response.count} recipes.`, type: 'success' });
+    } catch (err: any) {
+      console.error(err);
+      setDataMessage({ text: err.message || 'Failed to upload recipes.', type: 'error' });
+    } finally {
+      setDataLoading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
 
   const handleChangePassword = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -115,6 +178,48 @@ export default function Account({ onSuccess }: AccountProps) {
             {loading ? 'Changing...' : 'Change password'}
           </button>
         </form>
+      </div>
+      
+      <div className="bg-white/60 backdrop-blur-xl border border-white/40 p-8 rounded-3xl shadow-sm">
+        <h3 className="text-xl font-bold mb-6 text-stone-800">Data Management</h3>
+        <p className="text-sm text-stone-500 mb-6">Backup your recipes by downloading them as a JSON file, or restore them by uploading a previous backup.</p>
+        
+        {dataMessage && (
+          <div className={`mb-6 p-4 rounded-xl border text-sm ${
+            dataMessage.type === 'error' 
+              ? 'bg-red-50 text-red-600 border-red-100' 
+              : 'bg-green-50 text-green-700 border-green-200'
+          }`}>
+            {dataMessage.text}
+          </div>
+        )}
+
+        <div className="flex flex-col sm:flex-row gap-4">
+          <button
+            type="button"
+            onClick={handleDownloadAll}
+            disabled={dataLoading}
+            className="flex-1 px-6 py-2.5 bg-brand-50 text-brand-600 border border-brand-200 rounded-xl font-medium hover:bg-brand-100 transition-colors disabled:opacity-50"
+          >
+            {dataLoading ? 'Processing...' : 'Download All Recipes'}
+          </button>
+          
+          <button
+            type="button"
+            onClick={handleUploadClick}
+            disabled={dataLoading}
+            className="flex-1 px-6 py-2.5 bg-stone-100 text-stone-700 border border-stone-200 rounded-xl font-medium hover:bg-stone-200 transition-colors disabled:opacity-50"
+          >
+            {dataLoading ? 'Processing...' : 'Upload Recipes (JSON)'}
+          </button>
+          <input 
+            type="file" 
+            accept=".json" 
+            ref={fileInputRef} 
+            onChange={handleFileChange} 
+            className="hidden" 
+          />
+        </div>
       </div>
 
       <div className="flex justify-center mt-12">

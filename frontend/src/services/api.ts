@@ -62,6 +62,17 @@ export const api = {
     if (!response.ok) throw new Error('Failed to toggle favorite');
     return response.json();
   },
+
+  async uploadRecipes(recipes: Partial<Recipe>[]): Promise<{success: boolean, count: number}> {
+    const response = await fetch(`${API_BASE_URL}/recipes/upload`, {
+      ...defaultOptions,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(recipes),
+    });
+    if (!response.ok) throw new Error('Failed to upload recipes');
+    return response.json();
+  },
 };
 
 

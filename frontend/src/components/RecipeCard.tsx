@@ -77,7 +77,7 @@ const RecipeCard: React.FC<Props> = ({ recipe, onClick, onFavorite, index = 0 })
           </p>
         )}
         
-        <div className="flex items-center gap-4 text-xs font-medium text-stone-500 pt-4 border-t border-stone-100">
+        <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-stone-500 pt-4 border-t border-stone-100">
           {(recipe.prepTime !== null || recipe.cookTime !== null) && (
             <div className="flex items-center gap-1.5">
               <ClockIcon size={16} weight="duotone" className="text-brand-500" />

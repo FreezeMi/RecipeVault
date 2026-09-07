@@ -47,6 +47,7 @@ const RecipeDetail: React.FC<Props> = ({ id, onBack, onEdit, onDelete }) => {
     }
   };
 
+
   const handleFavorite = async () => {
     if (!recipe) return;
     if (!authenticated) {
@@ -157,8 +158,8 @@ const RecipeDetail: React.FC<Props> = ({ id, onBack, onEdit, onDelete }) => {
         </div>
 
         {/* Action Bar */}
-        <div className="flex border-b border-stone-100 bg-stone-50/50 p-4 px-8 items-center justify-between">
-          <div className="flex gap-6">
+        <div className="flex flex-col sm:flex-row border-b border-stone-100 bg-stone-50/50 p-4 md:px-8 items-start sm:items-center justify-between gap-4 sm:gap-0">
+          <div className="flex flex-wrap items-center gap-4 sm:gap-6">
             <div className="flex items-center gap-2 text-stone-500">
               <ClockIcon size={20} className="text-brand-500" />
               <div>
@@ -166,7 +167,7 @@ const RecipeDetail: React.FC<Props> = ({ id, onBack, onEdit, onDelete }) => {
                 <div className="font-semibold text-stone-900">{((recipe.prepTime || 0) + (recipe.cookTime || 0)) > 0 ? `${(recipe.prepTime || 0) + (recipe.cookTime || 0)} min` : '-'}</div>
               </div>
             </div>
-            <div className="w-px h-8 bg-stone-200" />
+            <div className="hidden sm:block w-px h-8 bg-stone-200" />
             <div className="flex items-center gap-2 text-stone-500">
               <UsersIcon size={20} className="text-brand-500" />
               <div>
@@ -177,7 +178,7 @@ const RecipeDetail: React.FC<Props> = ({ id, onBack, onEdit, onDelete }) => {
             {recipe.sourceUrl && (
               <>
                 <div className="w-px h-8 bg-stone-200 hidden sm:block" />
-                <a href={recipe.sourceUrl} target="_blank" rel="noopener noreferrer" className="hidden sm:flex items-center gap-2 text-brand-600 hover:text-brand-700 transition-colors">
+                <a href={recipe.sourceUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-brand-600 hover:text-brand-700 transition-colors">
                   <div className="bg-brand-50 p-2 rounded-lg"><LinkIcon size={18} weight="bold" /></div>
                   <span className="font-semibold text-sm">Original Recipe</span>
                 </a>
@@ -186,7 +187,7 @@ const RecipeDetail: React.FC<Props> = ({ id, onBack, onEdit, onDelete }) => {
           </div>
 
           {authenticated && (
-            <div className="flex gap-2">
+            <div className="flex gap-2 self-end sm:self-auto w-full sm:w-auto justify-end border-t sm:border-t-0 border-stone-200/60 pt-3 sm:pt-0">
               <button type="button" onClick={() => onEdit(recipe)} className="p-2 text-stone-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors">
                 <PencilSimpleIcon size={20} />
               </button>
