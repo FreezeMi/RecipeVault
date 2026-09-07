@@ -30,7 +30,7 @@ export default function Login({ onSuccess }: LoginProps) {
   };
 
   return (
-    <div className="max-w-md mx-auto mt-12 bg-white/60 backdrop-blur-xl border border-white/40 p-8 rounded-3xl shadow-xl">
+    <div className="max-w-md mx-auto mt-12 bg-white/95 md:bg-white/60 backdrop-blur-none md:backdrop-blur-xl border border-white/40 p-8 rounded-3xl shadow-xl">
       <h2 className="text-2xl font-bold mb-6 text-stone-800 text-center">Sign in</h2>
       
       {error && (

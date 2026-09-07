@@ -57,12 +57,12 @@ function App() {
     <div className="min-h-[100dvh] bg-stone-50 text-stone-900 font-sans selection:bg-brand-500/30 selection:text-brand-900 relative z-0 overflow-x-hidden">
       
       {/* Dynamic Background Blurs */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none -z-10">
+      <div className="fixed inset-0 overflow-hidden pointer-events-none -z-10 hidden md:block">
         <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] rounded-full bg-brand-500/10 blur-[100px]" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[600px] h-[600px] rounded-full bg-accent-500/10 blur-[120px]" />
       </div>
 
-      <header className="sticky top-0 z-50 glass border-b border-white/60">
+      <header className="sticky top-0 z-50 bg-white/95 md:bg-transparent md:glass border-b border-white/60 shadow-sm md:shadow-none">
         <div className="max-w-5xl mx-auto px-4 md:px-8 h-16 md:h-20 flex items-center justify-between">
           <motion.div 
             className="flex items-center gap-3 cursor-pointer group"

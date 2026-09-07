@@ -95,7 +95,7 @@ const RecipeDetail: React.FC<Props> = ({ id, onBack, onEdit, onDelete }) => {
         Back to recipes
       </button>
       
-      <div className="bg-white/95 rounded-3xl overflow-hidden shadow-lg shadow-black/5 border border-stone-200 backdrop-blur-sm">
+      <div className="bg-white/95 rounded-3xl overflow-hidden shadow-lg shadow-black/5 border border-stone-200 backdrop-blur-none md:backdrop-blur-sm">
         
         {/* Header Section */}
         <div className="relative">
@@ -117,7 +117,7 @@ const RecipeDetail: React.FC<Props> = ({ id, onBack, onEdit, onDelete }) => {
                       try {
                         const parsedTags = JSON.parse(recipe.tags);
                         return Array.isArray(parsedTags) && parsedTags.map(tag => (
-                          <span key={tag} className={`inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${recipe.imageUrl ? 'bg-white/20 backdrop-blur-md text-white' : 'bg-brand-50 text-brand-600'}`}>
+                          <span key={tag} className={`inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${recipe.imageUrl ? 'bg-white/20 backdrop-blur-none md:backdrop-blur-md text-white' : 'bg-brand-50 text-brand-600'}`}>
                             {tag}
                           </span>
                         ));
@@ -138,7 +138,7 @@ const RecipeDetail: React.FC<Props> = ({ id, onBack, onEdit, onDelete }) => {
               <motion.button 
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.9 }}
-                className={`p-3 rounded-full shrink-0 shadow-lg ${recipe.imageUrl ? 'bg-white/20 backdrop-blur-md border border-white/20' : 'bg-white border border-stone-200'}`}
+                className={`p-3 rounded-full shrink-0 shadow-lg ${recipe.imageUrl ? 'bg-white/20 backdrop-blur-none md:backdrop-blur-md border border-white/20' : 'bg-white border border-stone-200'}`}
                 onClick={handleFavorite}
               >
                 {(() => {

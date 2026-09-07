@@ -31,7 +31,7 @@ export default function Account({ onSuccess }: AccountProps) {
       a.download = `recipe_vault_backup_${new Date().toISOString().split('T')[0]}.json`;
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
+      a.remove();
       URL.revokeObjectURL(url);
       setDataMessage({ text: `Successfully downloaded ${recipes.length} recipes.`, type: 'success' });
     } catch (err) {
@@ -60,7 +60,7 @@ export default function Account({ onSuccess }: AccountProps) {
       const recipes = JSON.parse(text);
       
       if (!Array.isArray(recipes)) {
-        throw new Error('Invalid JSON format: expected an array of recipes.');
+        throw new TypeError('Invalid JSON format: expected an array of recipes.');
       }
       
       const response = await api.uploadRecipes(recipes);
@@ -122,7 +122,7 @@ export default function Account({ onSuccess }: AccountProps) {
 
   return (
     <div className="max-w-xl mx-auto space-y-8">
-      <div className="bg-white/60 backdrop-blur-xl border border-white/40 p-8 rounded-3xl shadow-sm">
+      <div className="bg-white/95 md:bg-white/60 backdrop-blur-none md:backdrop-blur-xl border border-white/40 p-8 rounded-3xl shadow-sm">
         <h2 className="text-2xl font-bold mb-6 text-stone-800">Account</h2>
         
         <div className="mb-8">
@@ -131,7 +131,7 @@ export default function Account({ onSuccess }: AccountProps) {
         </div>
       </div>
 
-      <div className="bg-white/60 backdrop-blur-xl border border-white/40 p-8 rounded-3xl shadow-sm">
+      <div className="bg-white/95 md:bg-white/60 backdrop-blur-none md:backdrop-blur-xl border border-white/40 p-8 rounded-3xl shadow-sm">
         <h3 className="text-xl font-bold mb-6 text-stone-800">Security</h3>
         
         {message && (
@@ -180,7 +180,7 @@ export default function Account({ onSuccess }: AccountProps) {
         </form>
       </div>
       
-      <div className="bg-white/60 backdrop-blur-xl border border-white/40 p-8 rounded-3xl shadow-sm">
+      <div className="bg-white/95 md:bg-white/60 backdrop-blur-none md:backdrop-blur-xl border border-white/40 p-8 rounded-3xl shadow-sm">
         <h3 className="text-xl font-bold mb-6 text-stone-800">Data Management</h3>
         <p className="text-sm text-stone-500 mb-6">Backup your recipes by downloading them as a JSON file, or restore them by uploading a previous backup.</p>
         

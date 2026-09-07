@@ -17,7 +17,7 @@ const RecipeCard: React.FC<Props> = ({ recipe, onClick, onFavorite, index = 0 })
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: index * 0.05, ease: [0.16, 1, 0.3, 1] }}
       whileHover={{ y: -4, transition: { duration: 0.2 } }}
-      className="group relative bg-white/95 rounded-2xl overflow-hidden shadow-lg shadow-black/5 hover:shadow-xl hover:shadow-brand-500/20 border border-stone-200 cursor-pointer transition-shadow backdrop-blur-sm"
+      className="group relative bg-white/95 rounded-2xl overflow-hidden shadow-lg shadow-black/5 hover:shadow-xl hover:shadow-brand-500/20 border border-stone-200 cursor-pointer transition-shadow"
       onClick={() => onClick(recipe.id)}
     >
       <div className="relative h-48 overflow-hidden bg-stone-100">
@@ -43,7 +43,7 @@ const RecipeCard: React.FC<Props> = ({ recipe, onClick, onFavorite, index = 0 })
                 const parsedTags = JSON.parse(recipe.tags);
                 if (Array.isArray(parsedTags) && parsedTags.length > 0) {
                   return (
-                    <div className="glass px-3 py-1 rounded-full text-xs font-bold text-stone-800 shadow-sm backdrop-blur-md tracking-wide">
+                    <div className="bg-white/95 md:glass px-3 py-1 rounded-full text-xs font-bold text-stone-800 shadow-sm md:backdrop-blur-md tracking-wide">
                       {parsedTags[0]}
                       {parsedTags.length > 1 && <span className="ml-1 opacity-70">+{parsedTags.length - 1}</span>}
                     </div>
@@ -57,7 +57,7 @@ const RecipeCard: React.FC<Props> = ({ recipe, onClick, onFavorite, index = 0 })
 
         {/* Favorite Button */}
         <button type="button" 
-          className={`absolute top-4 right-4 p-2 rounded-full glass backdrop-blur-md transition-all active:scale-95 shadow-sm
+          className={`absolute top-4 right-4 p-2 rounded-full bg-white/95 md:glass md:backdrop-blur-md transition-all active:scale-95 shadow-sm
             ${recipe.isFavorite ? 'text-accent-500' : 'text-stone-400 hover:text-stone-600'}`}
           onClick={(e) => onFavorite(e, recipe.id)}
           title={recipe.isFavorite ? "Unfavorite" : "Favorite"}
