@@ -73,6 +73,12 @@ export const api = {
     if (!response.ok) throw new Error('Failed to upload recipes');
     return response.json();
   },
+
+  async getDbStatus(): Promise<{isOkay: boolean, lastCheck: string | null}> {
+    const response = await fetch(`${API_BASE_URL}/system/db-status`, { ...defaultOptions });
+    if (!response.ok) throw new Error('Failed to get database status');
+    return response.json();
+  }
 };
 
 

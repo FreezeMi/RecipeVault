@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
 import { PrismaClient } from '@prisma/client';
 import authRouter, { requireAuth } from './auth';
+import { initDbCheck, getDbStatus } from './dbCheck';
 
 dotenv.config();
 
@@ -11,6 +12,8 @@ const app = express();
 app.disable('x-powered-by');
 
 const prisma = new PrismaClient();
+initDbCheck(prisma);
+
 const PORT = process.env.PORT || 3001;
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
@@ -23,6 +26,10 @@ app.use(express.json());
 app.use(cookieParser());
 
 app.use('/api/auth', authRouter);
+
+app.get('/api/system/db-status', requireAuth, (req: Request, res: Response) => {
+  res.json(getDbStatus());
+});
 
 // Get all recipes
 const getQueryString = (value: unknown): string | undefined => {
