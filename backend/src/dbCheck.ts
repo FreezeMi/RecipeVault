@@ -66,5 +66,7 @@ export const initDbCheck = (prisma: PrismaClient) => {
   checkAndRun();
 
   // Then check every hour to see if 5 days have passed since last check
-  setInterval(checkAndRun, 60 * 60 * 1000);
+  // unref() ensures this timer doesn't prevent the Node.js process from exiting (e.g. during tests)
+  const timer = setInterval(checkAndRun, 60 * 60 * 1000);
+  timer.unref();
 };
