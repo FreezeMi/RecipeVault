@@ -87,5 +87,19 @@ test('API Endpoints', async (t) => {
     assert.strictEqual(response2.body.success, true);
     assert.strictEqual(response2.body.count, 0);
   });
+
+  await t.test('GET /api/system/db-status should return status if authenticated', async () => {
+    const response = await request(app)
+      .get('/api/system/db-status')
+      .set('Cookie', authCookie);
+    assert.strictEqual(response.status, 200);
+    assert.strictEqual(typeof response.body.isOkay, 'boolean');
+  });
+
+  await t.test('GET /api/system/db-status should fail if unauthenticated', async () => {
+    const response = await request(app)
+      .get('/api/system/db-status');
+    assert.strictEqual(response.status, 401);
+  });
 });
 

@@ -135,3 +135,5 @@ skills-lock.json
 
 # Other files
 info.txt
+# Database check state
+.dbcheck.json

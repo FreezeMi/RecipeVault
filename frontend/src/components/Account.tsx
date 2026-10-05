@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 import { api } from '../services/api';
 
@@ -17,6 +17,15 @@ export default function Account({ onSuccess }: AccountProps) {
   const [dataMessage, setDataMessage] = useState<{ text: string, type: 'error' | 'success' } | null>(null);
   const [dataLoading, setDataLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [dbStatus, setDbStatus] = useState<{isOkay: boolean, lastCheck: string | null} | null>(null);
+
+  useEffect(() => {
+    api.getDbStatus()
+      .then(setDbStatus)
+      .catch(err => console.error('Failed to fetch DB status:', err));
+  }, []);
+
 
   const handleDownloadAll = async () => {
     try {
@@ -128,6 +137,32 @@ export default function Account({ onSuccess }: AccountProps) {
         <div className="mb-8">
           <div className="block text-sm font-medium text-stone-500 mb-1">Email</div>
           <div className="text-stone-900 font-medium">{user.email}</div>
+        </div>
+      </div>
+
+      <div className="bg-white/95 md:bg-white/60 backdrop-blur-none md:backdrop-blur-xl border border-white/40 p-8 rounded-3xl shadow-sm">
+        <h3 className="text-xl font-bold mb-6 text-stone-800">System Status</h3>
+        
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <div className="block text-sm font-medium text-stone-500 mb-1">Database Status</div>
+            <div className="text-stone-900 font-medium flex items-center gap-2">
+              {dbStatus ? (
+                <>
+                  <div className={`w-2.5 h-2.5 rounded-full ${dbStatus.isOkay ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                  {dbStatus.isOkay ? 'Healthy (Awake)' : 'Issue Detected'}
+                </>
+              ) : (
+                'Loading...'
+              )}
+            </div>
+          </div>
+          <div>
+            <div className="block text-sm font-medium text-stone-500 mb-1">Last DB Check</div>
+            <div className="text-stone-900 font-medium">
+              {dbStatus?.lastCheck ? new Date(dbStatus.lastCheck).toLocaleString() : 'Never'}
+            </div>
+          </div>
         </div>
       </div>
 
