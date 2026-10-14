@@ -2,7 +2,8 @@ import { PrismaClient } from '@prisma/client';
 import fs from 'node:fs';
 import path from 'node:path';
 
-// Supabase pauses free-tier projects after a week of inactivity; pinging every few days keeps it awake.
+// Periodically verifies database connectivity; the result is shown in the Account screen.
+// (Neon suspends idle compute and resumes it on the next query, so this is a health check, not a keep-alive.)
 const CHECK_INTERVAL = 5 * 24 * 60 * 60 * 1000; // 5 days
 const POLL_INTERVAL = 60 * 60 * 1000; // 1 hour
 const FILE_PATH = path.join(process.cwd(), '.dbcheck.json');

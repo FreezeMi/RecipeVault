@@ -2,7 +2,7 @@
 
 A beautifully designed, personal full-stack recipe management application built with a modern, high-performance tech stack. 
 
-The application allows you to create, edit, manage, and discover your personal culinary vault. Built completely from scratch with a clean, mellow-white aesthetic, featuring satisfying animations, comprehensive filtering, and local SQLite data persistence.
+The application allows you to create, edit, manage, and discover your personal culinary vault. Built completely from scratch with a clean, mellow-white aesthetic, featuring satisfying animations, comprehensive filtering, and PostgreSQL data persistence on Neon.
 
 ## ✨ Features
 
@@ -31,13 +31,13 @@ The application allows you to create, edit, manage, and discover your personal c
 - [Node.js](https://nodejs.org/) & [Express](https://expressjs.com/) (RESTful API)
 - [TypeScript](https://www.typescriptlang.org/)
 - [Prisma ORM](https://www.prisma.io/) (Database access & modeling)
-- [Supabase (PostgreSQL)](https://supabase.com/) (Production database)
+- [Neon (PostgreSQL)](https://neon.com/) (Production database: free tier, scales to zero and wakes automatically)
 
 ## 📋 Prerequisites
 
 - Node.js (v18 or higher)
 - npm (Node Package Manager)
-- A free [Supabase](https://supabase.com/) account and project.
+- A free [Neon](https://neon.com/) account and project.
 
 ## 🛠️ Local Installation & Setup
 
@@ -50,7 +50,7 @@ The application allows you to create, edit, manage, and discover your personal c
 2. **Configure Environment Variables:**
    Create `.env` files in both `backend` and `frontend` folders using the provided `.env.example` templates.
    - In `backend/.env`, set your `SESSION_SECRET` to a long random string. Generate one with `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`. It is **required in production**: the server refuses to start without it.
-   - In `backend/.env`, set your `DATABASE_URL` to your Supabase PostgreSQL connection string (direct or session pooler string).
+   - In `backend/.env`, set `DATABASE_URL` to your Neon **pooled** connection string (hostname contains `-pooler`) and `DATABASE_URL_UNPOOLED` to the **direct** string (same hostname without `-pooler`). Prisma uses the direct one for migrations.
    - In `frontend/.env`, you can leave `VITE_API_URL` as default for local development.
 
 3. **Initialize the Database:**
@@ -65,7 +65,7 @@ The application allows you to create, edit, manage, and discover your personal c
    ```
 
 4. **Create the Admin Account:**
-   While still in the `backend` folder, run the bootstrap script to securely create your personal login account in your Supabase database:
+   While still in the `backend` folder, run the bootstrap script to securely create your personal login account:
    ```bash
    npm run create-admin
    ```
@@ -85,9 +85,9 @@ The application allows you to create, edit, manage, and discover your personal c
 
 This application is designed to be easily hosted on free-tier services.
 
-**1. Supabase (Database)**
-- Create a project on Supabase and grab the **Session Pooler** IPv4 Connection String (port 5432). 
-- Ensure your Prisma schema `provider` is set to `"postgresql"`.
+**1. Neon (Database)**
+- Create a project on [Neon](https://neon.com/) and copy both connection strings: the **pooled** one (`-pooler` in the hostname) and the **direct** one.
+- The free plan never pauses permanently: idle compute suspends after ~5 minutes and resumes automatically on the next query (a few hundred ms).
 
 **2. Render (Backend)**
 - Create a new Web Service on Render pointing to your GitHub repository.
@@ -96,7 +96,8 @@ This application is designed to be easily hosted on free-tier services.
 - **Start Command**: `npm run start`
 - **Health Check Path**: `/api/health`
 - **Environment Variables**:
-  - `DATABASE_URL`: the Supabase session pooler string.
+  - `DATABASE_URL`: the Neon pooled connection string.
+  - `DATABASE_URL_UNPOOLED`: the Neon direct connection string (used by `prisma migrate deploy` during the build).
   - `SESSION_SECRET`: required; use a long random value (32+ characters).
   - `NODE_ENV=production`: enables secure cross-site cookies, HSTS and proxy trust.
   - `FRONTEND_URL`: your Vercel URL. Several origins can be comma-separated (e.g. production + preview).
@@ -143,6 +144,7 @@ The API tests write to the database, so they **refuse to run against anything ex
 docker run -d --name recipevault-testdb -e POSTGRES_USER=test -e POSTGRES_PASSWORD=test -e POSTGRES_DB=recipevault_test -p 55432:5432 postgres:15
 cd backend
 export DATABASE_URL="postgresql://test:test@localhost:55432/recipevault_test"
+export DATABASE_URL_UNPOOLED="$DATABASE_URL"
 npm run db:migrate
 npm run typecheck
 npm run test

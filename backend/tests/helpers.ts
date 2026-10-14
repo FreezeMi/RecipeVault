@@ -4,7 +4,7 @@ import app from '../src/app';
 import { prisma } from '../src/db';
 
 // The API tests write to the database. Refuse to run against anything but a local database
-// (e.g. the production Supabase URL in backend/.env) unless explicitly allowed.
+// (e.g. the production Neon URL in backend/.env) unless explicitly allowed.
 const dbHost = (() => {
   try {
     return new URL(process.env.DATABASE_URL ?? '').hostname;

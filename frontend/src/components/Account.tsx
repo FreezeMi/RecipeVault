@@ -282,7 +282,7 @@ export default function Account() {
       <Section
         icon={<DatabaseIcon size={24} weight="duotone" />}
         title="System status"
-        description="The server pings the database every few days to keep the free-tier instance awake."
+        description="The server checks the database connection every few days."
       >
         <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="rounded-2xl bg-stone-50 p-4">

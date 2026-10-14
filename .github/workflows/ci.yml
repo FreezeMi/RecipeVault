@@ -67,6 +67,7 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/recipevault_test?schema=public
+      DATABASE_URL_UNPOOLED: postgresql://testuser:testpassword@localhost:5432/recipevault_test?schema=public
 
     steps:
       - name: Checkout code

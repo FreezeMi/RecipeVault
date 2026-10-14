@@ -1,4 +1,4 @@
 import { PrismaClient } from '@prisma/client';
 
-// A single shared client keeps the connection pool small (important on Supabase's pooler).
+// A single shared client keeps the number of database connections small.
 export const prisma = new PrismaClient();
