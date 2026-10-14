@@ -7,10 +7,12 @@ The application allows you to create, edit, manage, and discover your personal c
 ## ✨ Features
 
 - **Full CRUD functionality:** Add, view, edit, and delete recipes.
-- **Data Backup & Restore:** Export your entire vault as a JSON file to keep your data safe, and seamlessly upload backups later (features smart duplicate prevention).
+- **Data Backup & Restore:** Export your entire vault as a JSON file and restore it later. Restoring only ever *adds* recipes: titles already in the vault (case-insensitive) are skipped, and the whole import is written atomically.
 - **Authentication:** Protected recipe management. Public visitors can view and search recipes, while only the authenticated admin can add, edit, or delete them.
 - **Multi-Tag System & Favorites:** Assign multiple tags to any recipe (e.g., Breakfast, Dessert, Seafood, Vegan) and filter your vault effortlessly. Mark your best recipes as favorites.
-- **Smart Search:** Quickly find recipes by title or ingredients.
+- **Smart Search:** Case-insensitive search across titles, descriptions, ingredients and tags. Filters live in the URL, so they survive refreshes and the Back button.
+- **Shareable URLs:** Every recipe has its own address (`/recipes/12`), so links, refreshes and browser navigation all work.
+- **Cooking Mode Touches:** Tick off ingredients as you go; reorder steps while editing.
 - **Modern UI/UX:** Built with Tailwind CSS v4 and Framer Motion for a premium, agency-quality bright-mode aesthetic with satisfying micro-interactions.
 - **Responsive Design:** Works flawlessly on desktop and mobile browsers. Heavily optimized to disable expensive visual effects (like frosted glass) on smartphones to ensure buttery-smooth scrolling.
 - **Easy Images:** No complex file uploading required—simply paste direct image URLs or use placeholders (e.g. `https://picsum.photos/800/600`).
@@ -47,17 +49,17 @@ The application allows you to create, edit, manage, and discover your personal c
 
 2. **Configure Environment Variables:**
    Create `.env` files in both `backend` and `frontend` folders using the provided `.env.example` templates.
-   - In `backend/.env`, set your `SESSION_SECRET` (e.g., `SESSION_SECRET="your_secure_random_string"`).
+   - In `backend/.env`, set your `SESSION_SECRET` to a long random string. Generate one with `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`. It is **required in production**: the server refuses to start without it.
    - In `backend/.env`, set your `DATABASE_URL` to your Supabase PostgreSQL connection string (direct or session pooler string).
    - In `frontend/.env`, you can leave `VITE_API_URL` as default for local development.
 
 3. **Initialize the Database:**
-   Navigate into the backend and initialize your Supabase database. This will push your schema to Supabase:
+   Navigate into the backend and apply the migrations to your database:
    ```bash
    cd backend
-   npx prisma migrate dev --name init
+   npm run db:migrate
    ```
-   *(Optional)* Populate the database with starter recipes:
+   *(Optional)* Add a few starter recipes. The seed never deletes anything; it only adds recipes whose title isn't already in the vault:
    ```bash
    npm run db:seed
    ```
@@ -67,7 +69,8 @@ The application allows you to create, edit, manage, and discover your personal c
    ```bash
    npm run create-admin
    ```
-   Follow the prompts to set your email and password (minimum 12 characters).
+   Follow the prompts to set your email and password (minimum 12 characters; input is hidden).
+   Forgot your password? Run `npm run create-admin` again. When an account already exists it offers to reset the password (and signs out all sessions).
 
 5. **Start the Application Locally:**
    From the root directory, start both the frontend and backend concurrently:
@@ -89,15 +92,22 @@ This application is designed to be easily hosted on free-tier services.
 **2. Render (Backend)**
 - Create a new Web Service on Render pointing to your GitHub repository.
 - **Root Directory**: `backend`
-- **Build Command**: `npm install && npx prisma generate && npx prisma migrate deploy && npm run build`
+- **Build Command**: `npm ci && npx prisma generate && npx prisma migrate deploy && npm run build`
 - **Start Command**: `npm run start`
-- **Environment Variables**: Add your `DATABASE_URL` (the Supabase session pooler string), `SESSION_SECRET`, and `FRONTEND_URL` (your Vercel URL, without the trailing slash).
+- **Health Check Path**: `/api/health`
+- **Environment Variables**:
+  - `DATABASE_URL`: the Supabase session pooler string.
+  - `SESSION_SECRET`: required; use a long random value (32+ characters).
+  - `NODE_ENV=production`: enables secure cross-site cookies, HSTS and proxy trust.
+  - `FRONTEND_URL`: your Vercel URL. Several origins can be comma-separated (e.g. production + preview).
+  - *(Optional)* `TRUST_PROXY`: defaults to `1` in production, which is correct for Render.
 
 **3. Vercel (Frontend)**
 - Create a new project on Vercel pointing to your GitHub repository.
 - **Root Directory**: `frontend`
 - **Framework Preset**: Vite
 - **Environment Variables**: Add `VITE_API_URL` pointing to your Render backend URL (e.g., `https://your-backend.onrender.com/api`).
+- `frontend/vercel.json` rewrites all routes to `index.html` so deep links like `/recipes/12` work on refresh, and adds caching and security headers.
 
 ## 📸 Using Images
 
@@ -126,18 +136,25 @@ npm run test
 ```
 
 ### Backend Tests
-The backend uses the native Node.js test runner and [Supertest](https://github.com/ladjs/supertest) to verify the REST API endpoints and authentication logic.
+The backend uses the native Node.js test runner and [Supertest](https://github.com/ladjs/supertest) to verify validation, the REST API endpoints and authentication logic.
 
-To run the backend tests:
+The API tests write to the database, so they **refuse to run against anything except a local database** (set `ALLOW_REMOTE_TEST_DB=1` to override). Start a throwaway PostgreSQL with Docker and point the tests at it:
 ```bash
+docker run -d --name recipevault-testdb -e POSTGRES_USER=test -e POSTGRES_PASSWORD=test -e POSTGRES_DB=recipevault_test -p 55432:5432 postgres:15
 cd backend
+export DATABASE_URL="postgresql://test:test@localhost:55432/recipevault_test"
+npm run db:migrate
+npm run typecheck
 npm run test
 ```
+
+### Continuous Integration
+The GitHub Actions pipeline type-checks, tests and builds both apps, applies the real migration history to a fresh PostgreSQL service, and fails if `schema.prisma` has drifted from the migrations.
 
 ## 📁 Project Structure
 
 ```text
-RecipeApp/
+RecipeVault/
 ├── .github/
 │   └── workflows/
 │       └── ci.yml           # GitHub Actions CI pipeline
@@ -148,17 +165,25 @@ RecipeApp/
 │   │   ├── schema.prisma    # PostgreSQL database schema
 │   │   └── seed.ts          # Seed data script
 │   ├── src/
-│   │   ├── server.ts        # Express REST API endpoints
-│   │   ├── auth.ts          # Authentication routes & logic
-│   │   └── scripts/         # Admin creation CLI scripts
+│   │   ├── server.ts        # Entry point (listen, graceful shutdown)
+│   │   ├── app.ts           # Express app: middleware, routes, error handling
+│   │   ├── config.ts        # Environment configuration
+│   │   ├── recipes.ts       # Recipe routes (CRUD, favorites, backup restore)
+│   │   ├── validation.ts    # Input validation & normalization
+│   │   ├── auth.ts          # Authentication routes & session middleware
+│   │   ├── http.ts          # Security headers, CSRF origin check, errors
+│   │   ├── dbCheck.ts       # Periodic database keep-alive ping
+│   │   └── scripts/         # Admin creation / password reset CLI
 │   ├── tests/
+│   │   ├── unit/            # Validation unit tests
 │   │   └── api/             # Backend API & Authentication tests
 │   └── package.json
 └── frontend/
     ├── src/
     │   ├── __tests__/       # Frontend component tests
-    │   ├── components/      # React functional components
-    │   ├── services/        # API wrapper functions
+    │   ├── components/      # React components (screens + shared UI)
+    │   ├── lib/             # Router, hooks, recipe helpers
+    │   ├── services/        # API client
     │   ├── types/           # TypeScript interfaces
     │   ├── App.tsx          # Main application router/shell
     │   ├── constants.ts     # Editable global constants (e.g. Tags)

@@ -137,3 +137,13 @@ skills-lock.json
 info.txt
 # Database check state
 .dbcheck.json
+
+# TypeScript output accidentally emitted next to the sources (real output goes to backend/dist)
+backend/src/**/*.js
+backend/src/**/*.js.map
+backend/src/**/*.d.ts
+backend/src/**/*.d.ts.map
+backend/prisma/*.js
+backend/prisma/*.js.map
+backend/prisma/*.d.ts
+backend/prisma/*.d.ts.map

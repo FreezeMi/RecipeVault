@@ -3,8 +3,6 @@ import { PrismaClient } from '@prisma/client'
 const prisma = new PrismaClient()
 
 async function main() {
-  await prisma.recipe.deleteMany({});
-  
   const recipes = [
     {
       title: 'Thai Peanut Chicken',
@@ -78,13 +76,16 @@ async function main() {
     }
   ];
 
-  for (const recipe of recipes) {
-    await prisma.recipe.create({
-      data: recipe,
-    })
+  // Never delete existing data: only add starter recipes whose title isn't in the vault yet.
+  const existing = await prisma.recipe.findMany({ select: { title: true } })
+  const existingTitles = new Set(existing.map((r) => r.title.trim().toLowerCase()))
+  const missing = recipes.filter((r) => !existingTitles.has(r.title.trim().toLowerCase()))
+
+  if (missing.length > 0) {
+    await prisma.recipe.createMany({ data: missing })
   }
 
-  console.log('Seeded database successfully')
+  console.log(`Seed complete: added ${missing.length} recipe(s), ${recipes.length - missing.length} already present.`)
 }
 
 main()

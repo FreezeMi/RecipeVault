@@ -1,255 +1,379 @@
-import React, { useState, useEffect } from 'react';
-import type { Recipe, Ingredient } from '../types';
-import { api } from '../services/api';
-import { motion } from 'motion/react';
-import { ClockIcon, UsersIcon, BookOpenIcon, HeartIcon, PencilSimpleIcon, TrashIcon, ArrowLeftIcon, LinkIcon } from '@phosphor-icons/react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { m } from 'motion/react';
+import {
+  ClockIcon,
+  UsersIcon,
+  HeartIcon,
+  PencilSimpleIcon,
+  TrashIcon,
+  ArrowSquareOutIcon,
+  TimerIcon,
+  FireIcon,
+  CheckIcon,
+  ArrowClockwiseIcon,
+} from '@phosphor-icons/react';
+import { api, toErrorMessage } from '../services/api';
 import { useAuth } from './AuthContext';
+import { useToast } from './Toast';
+import RecipeImage from './RecipeImage';
+import { BackLink, Notice, PageLoader, Spinner, buttonStyles, cardClass } from './ui';
+import { Link, navigate, paths, useScrollRestoration } from '../lib/router';
+import { useDocumentTitle, useRecipe } from '../lib/hooks';
+import {
+  formatMinutes,
+  formatServings,
+  hostnameOf,
+  parseIngredients,
+  parseInstructions,
+  parseTags,
+  safeHttpUrl,
+  totalMinutes,
+} from '../lib/recipe';
 
 interface Props {
   id: number;
-  onBack: () => void;
-  onEdit: (recipe: Recipe) => void;
-  onDelete: () => void;
 }
 
-const RecipeDetail: React.FC<Props> = ({ id, onBack, onEdit, onDelete }) => {
-  const [recipe, setRecipe] = useState<Recipe | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const { authenticated } = useAuth();
-
-  useEffect(() => {
-    const fetchRecipe = async () => {
-      try {
-        const data = await api.getRecipe(id);
-        setRecipe(data);
-      } catch {
-        setError('Recipe not found or failed to load.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchRecipe();
-  }, [id]);
-
-  const handleDelete = async () => {
-    if (window.confirm('Are you sure you want to delete this recipe?')) {
-      setIsDeleting(true);
-      try {
-        await api.deleteRecipe(id);
-        onDelete();
-      } catch (err) {
-        console.error('Failed to delete recipe:', err);
-        alert('Failed to delete recipe');
-        setIsDeleting(false);
-      }
-    }
-  };
-
-
-  const handleFavorite = async () => {
-    if (!recipe) return;
-    if (!authenticated) {
-      alert('You must be logged in to favorite a recipe.');
-      return;
-    }
-    try {
-      const updated = await api.toggleFavorite(id);
-      setRecipe(updated);
-    } catch (err) {
-      console.error('Failed to toggle favorite:', err);
-      alert('Failed to toggle favorite');
-    }
-  };
-
-  if (loading) return (
-    <div className="py-20 flex flex-col items-center justify-center gap-4 opacity-50">
-      <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 2, ease: "linear" }}>
-        <BookOpenIcon size={48} weight="duotone" className="text-brand-500" />
-      </motion.div>
-      <p className="text-zinc-500 font-medium">Opening recipe...</p>
-    </div>
-  );
-  
-  if (error || !recipe) return (
-    <div className="bg-red-50 text-red-600 p-8 rounded-2xl text-center flex flex-col items-center gap-4">
-      <p>{error || 'Recipe not found'}</p>
-      <button type="button" onClick={onBack} className="bg-white px-4 py-2 rounded-full font-medium shadow-sm border border-red-100 hover:bg-red-50">Go Back</button>
-    </div>
-  );
-
-  let ingredients: Ingredient[] = [];
-  try { ingredients = JSON.parse(recipe.ingredients); } catch (e) { console.error(e); }
-
-  let instructions: string[] = [];
-  try { instructions = JSON.parse(recipe.instructions); } catch (e) { console.error(e); }
-
+function Stat({ icon, label, value }: Readonly<{ icon: ReactNode; label: string; value: string }>) {
   return (
-    <div className="max-w-4xl mx-auto">
-      <button type="button" 
-        onClick={onBack} 
-        className="flex items-center gap-2 text-stone-500 hover:text-stone-900 transition-colors mb-6 font-medium group"
-      >
-        <ArrowLeftIcon className="group-hover:-translate-x-1 transition-transform" />
-        Back to recipes
-      </button>
-      
-      <div className="bg-white/95 rounded-3xl overflow-hidden shadow-lg shadow-black/5 border border-stone-200 backdrop-blur-none md:backdrop-blur-sm">
-        
-        {/* Header Section */}
-        <div className="relative">
-          {recipe.imageUrl ? (
-            <div className="w-full h-[40dvh] min-h-[300px] relative">
-              <img src={recipe.imageUrl} alt={recipe.title} className="w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-            </div>
-          ) : (
-            <div className="w-full h-32 bg-gradient-to-r from-brand-500 to-brand-600" />
-          )}
-
-          <div className={`p-8 md:p-10 ${recipe.imageUrl ? 'absolute bottom-0 left-0 w-full text-white' : 'pb-6'}`}>
-            <div className="flex justify-between items-start gap-4">
-              <div>
-                {recipe.tags && (
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {(() => {
-                      try {
-                        const parsedTags = JSON.parse(recipe.tags);
-                        return Array.isArray(parsedTags) && parsedTags.map(tag => (
-                          <span key={tag} className={`inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${recipe.imageUrl ? 'bg-white/20 backdrop-blur-none md:backdrop-blur-md text-white' : 'bg-brand-50 text-brand-600'}`}>
-                            {tag}
-                          </span>
-                        ));
-                      } catch (e) { console.error(e); return null;
-                      }
-                    })()}
-                  </div>
-                )}
-                <h1 className={`text-3xl md:text-5xl font-bold tracking-tight mb-2 leading-tight ${recipe.imageUrl ? 'text-white' : 'text-stone-900'}`}>
-                  {recipe.title}
-                </h1>
-                {recipe.description && (
-                  <p className={`text-lg max-w-2xl ${recipe.imageUrl ? 'text-white/90' : 'text-stone-500'}`}>
-                    {recipe.description}
-                  </p>
-                )}
-              </div>
-              <motion.button 
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-                className={`p-3 rounded-full shrink-0 shadow-lg ${recipe.imageUrl ? 'bg-white/20 backdrop-blur-none md:backdrop-blur-md border border-white/20' : 'bg-white border border-stone-200'}`}
-                onClick={handleFavorite}
-              >
-                {(() => {
-                  let heartColor: string;
-                  if (recipe.isFavorite) {
-                    heartColor = 'text-accent-500';
-                  } else if (recipe.imageUrl) {
-                    heartColor = 'text-white';
-                  } else {
-                    heartColor = 'text-stone-400';
-                  }
-                  return <HeartIcon size={28} weight={recipe.isFavorite ? "fill" : "bold"} className={heartColor} />;
-                })()}
-              </motion.button>
-            </div>
-          </div>
-        </div>
-
-        {/* Action Bar */}
-        <div className="flex flex-col sm:flex-row border-b border-stone-100 bg-stone-50/50 p-4 md:px-8 items-start sm:items-center justify-between gap-4 sm:gap-0">
-          <div className="flex flex-wrap items-center gap-4 sm:gap-6">
-            <div className="flex items-center gap-2 text-stone-500">
-              <ClockIcon size={20} className="text-brand-500" />
-              <div>
-                <div className="text-xs text-stone-400 font-medium uppercase tracking-wider">Total Time</div>
-                <div className="font-semibold text-stone-900">{((recipe.prepTime || 0) + (recipe.cookTime || 0)) > 0 ? `${(recipe.prepTime || 0) + (recipe.cookTime || 0)} min` : '-'}</div>
-              </div>
-            </div>
-            <div className="hidden sm:block w-px h-8 bg-stone-200" />
-            <div className="flex items-center gap-2 text-stone-500">
-              <UsersIcon size={20} className="text-brand-500" />
-              <div>
-                <div className="text-xs text-stone-400 font-medium uppercase tracking-wider">Yield</div>
-                <div className="font-semibold text-stone-900">{recipe.servings ? `${recipe.servings} servings` : '-'}</div>
-              </div>
-            </div>
-            {recipe.sourceUrl && (
-              <>
-                <div className="w-px h-8 bg-stone-200 hidden sm:block" />
-                <a href={recipe.sourceUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-brand-600 hover:text-brand-700 transition-colors">
-                  <div className="bg-brand-50 p-2 rounded-lg"><LinkIcon size={18} weight="bold" /></div>
-                  <span className="font-semibold text-sm">Original Recipe</span>
-                </a>
-              </>
-            )}
-          </div>
-
-          {authenticated && (
-            <div className="flex gap-2 self-end sm:self-auto w-full sm:w-auto justify-end border-t sm:border-t-0 border-stone-200/60 pt-3 sm:pt-0">
-              <button type="button" onClick={() => onEdit(recipe)} className="p-2 text-stone-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors">
-                <PencilSimpleIcon size={20} />
-              </button>
-              <button type="button" onClick={handleDelete} disabled={isDeleting} className="p-2 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                <TrashIcon size={20} />
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Content */}
-        <div className="p-8 md:p-10 grid grid-cols-1 md:grid-cols-12 gap-12">
-          
-          <div className="md:col-span-4">
-            <h2 className="text-xl font-bold text-stone-900 mb-6 flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center border border-brand-100">
-                <BookOpenIcon size={18} weight="duotone" />
-              </div>{' '}
-              Ingredients
-            </h2>
-            <ul className="space-y-4">
-              {ingredients.map((ing, i) => (
-                <li key={ing.name + i} className="flex gap-3 text-stone-600 py-2 border-b border-stone-100 last:border-0">
-                  <span className="font-semibold text-stone-900 min-w-[3rem]">{ing.quantity} {ing.unit}</span>
-                  <span>{ing.name}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="md:col-span-8">
-            <h2 className="text-xl font-bold text-stone-900 mb-6 flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center border border-brand-100">
-                <BookOpenIcon size={18} weight="duotone" />
-              </div>{' '}
-              Instructions
-            </h2>
-            <div className="space-y-6">
-              {instructions.map((inst, i) => (
-                <div key={inst.substring(0,10) + i} className="flex gap-4 group">
-                  <div className="shrink-0 w-8 h-8 rounded-full border-2 border-stone-200 text-stone-400 flex items-center justify-center font-bold text-sm group-hover:border-brand-500 group-hover:text-brand-600 transition-colors">
-                    {i + 1}
-                  </div>
-                  <p className="text-stone-700 leading-relaxed pt-1">
-                    {inst}
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            {recipe.notes && (
-              <div className="mt-12 bg-amber-50 border border-amber-200/50 rounded-2xl p-6">
-                <h3 className="font-bold text-amber-900 mb-2 text-sm uppercase tracking-wider">Chef's Notes</h3>
-                <p className="text-amber-800 leading-relaxed">{recipe.notes}</p>
-              </div>
-            )}
-          </div>
-          
-        </div>
+    <div className="flex items-center gap-3">
+      <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-brand-50 text-brand-600" aria-hidden="true">
+        {icon}
+      </span>
+      <div>
+        <dt className="text-xs font-semibold uppercase tracking-wider text-stone-500">{label}</dt>
+        <dd className="font-semibold text-stone-900">{value}</dd>
       </div>
     </div>
   );
-};
+}
 
-export default RecipeDetail;
+export default function RecipeDetail({ id }: Readonly<Props>) {
+  const state = useRecipe(id);
+  const { status, reload, setRecipe } = state;
+  const { authenticated } = useAuth();
+  const toast = useToast();
+
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [favoritePending, setFavoritePending] = useState(false);
+  const [checked, setChecked] = useState<ReadonlySet<number>>(new Set());
+  const cancelDeleteRef = useRef<HTMLButtonElement>(null);
+
+  useDocumentTitle(state.recipe?.title);
+  useScrollRestoration(status !== 'loading');
+
+  useEffect(() => {
+    if (confirmingDelete) cancelDeleteRef.current?.focus();
+  }, [confirmingDelete]);
+
+  if (state.status === 'loading') return <PageLoader label="Opening recipe…" />;
+
+  if (state.status === 'error') {
+    return (
+      <div className="mx-auto max-w-xl py-12">
+        <BackLink to={paths.list()}>Back to recipes</BackLink>
+        <Notice
+          tone="error"
+          action={
+            !state.notFound && (
+              <button type="button" onClick={reload} className="inline-flex items-center gap-1.5 font-semibold">
+                <ArrowClockwiseIcon size={16} weight="bold" aria-hidden="true" />
+                Retry
+              </button>
+            )
+          }
+        >
+          {state.error}
+        </Notice>
+      </div>
+    );
+  }
+
+  const { recipe } = state;
+  const tags = parseTags(recipe.tags);
+  const ingredients = parseIngredients(recipe.ingredients);
+  const instructions = parseInstructions(recipe.instructions);
+  const minutes = totalMinutes(recipe);
+  const sourceUrl = safeHttpUrl(recipe.sourceUrl);
+  const hasImage = safeHttpUrl(recipe.imageUrl) !== null;
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await api.deleteRecipe(recipe.id);
+      toast.success(`“${recipe.title}” was deleted.`);
+      navigate(paths.list(), { replace: true });
+    } catch (err) {
+      toast.error(toErrorMessage(err, 'Failed to delete recipe.'));
+      setDeleting(false);
+      setConfirmingDelete(false);
+    }
+  };
+
+  const handleFavorite = async () => {
+    setFavoritePending(true);
+    try {
+      setRecipe(await api.toggleFavorite(recipe.id));
+    } catch (err) {
+      toast.error(toErrorMessage(err, 'Failed to update favorite.'));
+    } finally {
+      setFavoritePending(false);
+    }
+  };
+
+  const toggleIngredient = (index: number) =>
+    setChecked(current => {
+      const next = new Set(current);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+
+  const stats = [
+    recipe.prepTime !== null && { label: 'Prep', value: formatMinutes(recipe.prepTime), icon: <TimerIcon size={20} weight="duotone" /> },
+    recipe.cookTime !== null && { label: 'Cook', value: formatMinutes(recipe.cookTime), icon: <FireIcon size={20} weight="duotone" /> },
+    minutes !== null &&
+      recipe.prepTime !== null &&
+      recipe.cookTime !== null && { label: 'Total', value: formatMinutes(minutes), icon: <ClockIcon size={20} weight="duotone" /> },
+    recipe.servings !== null && { label: 'Yield', value: formatServings(recipe.servings), icon: <UsersIcon size={20} weight="duotone" /> },
+  ].filter(Boolean) as { label: string; value: string; icon: ReactNode }[];
+
+  return (
+    <article className="mx-auto max-w-5xl">
+      <BackLink to={paths.list()}>Back to recipes</BackLink>
+
+      <div className={`${cardClass} overflow-hidden`}>
+        {/* Hero */}
+        <header className="relative">
+          {hasImage ? (
+            <div className="relative h-[42dvh] min-h-[280px] max-h-[520px]">
+              <RecipeImage src={recipe.imageUrl} className="size-full object-cover" priority iconSize={64} />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
+            </div>
+          ) : (
+            <div className="h-28 bg-gradient-to-br from-brand-50 via-stone-50 to-accent-50" />
+          )}
+
+          <div className={`p-6 md:p-10 ${hasImage ? 'absolute inset-x-0 bottom-0 text-white' : '-mt-10'}`}>
+            {tags.length > 0 && (
+              <ul className="mb-3 flex flex-wrap gap-2" aria-label="Tags">
+                {tags.map(tag => (
+                  <li key={tag}>
+                    <Link
+                      to={paths.list(new URLSearchParams({ tag }).toString())}
+                      className={`inline-block rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wider transition-colors ${
+                        hasImage
+                          ? 'bg-white/20 text-white hover:bg-white/30 md:backdrop-blur-md'
+                          : 'bg-brand-50 text-brand-700 hover:bg-brand-100'
+                      }`}
+                    >
+                      {tag}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <h1
+              className={`max-w-3xl font-display text-3xl font-semibold leading-tight tracking-tight md:text-5xl ${
+                hasImage ? 'text-white [text-shadow:0_2px_12px_rgb(0_0_0/0.3)]' : 'text-stone-900'
+              }`}
+            >
+              {recipe.title}
+            </h1>
+            {recipe.description && (
+              <p className={`mt-3 max-w-2xl text-base md:text-lg ${hasImage ? 'text-white/90' : 'text-stone-600'}`}>
+                {recipe.description}
+              </p>
+            )}
+          </div>
+        </header>
+
+        {/* Meta + actions */}
+        <div className="flex flex-col gap-5 border-b border-stone-100 bg-stone-50/60 px-6 py-5 md:flex-row md:items-center md:justify-between md:px-10">
+          {stats.length > 0 || sourceUrl ? (
+            <dl className="flex flex-wrap items-center gap-x-8 gap-y-4">
+              {stats.map(stat => (
+                <Stat key={stat.label} {...stat} />
+              ))}
+              {sourceUrl && (
+                <div>
+                  <dt className="sr-only">Source</dt>
+                  <dd>
+                    <a
+                      href={sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-white px-3.5 py-2 text-sm font-semibold text-brand-700 transition-colors hover:border-brand-300 hover:bg-brand-50"
+                    >
+                      Original at {hostnameOf(sourceUrl)}
+                      <ArrowSquareOutIcon size={16} weight="bold" aria-hidden="true" />
+                      <span className="sr-only">(opens in a new tab)</span>
+                    </a>
+                  </dd>
+                </div>
+              )}
+            </dl>
+          ) : (
+            <span />
+          )}
+
+          {authenticated && (
+            <div className="flex flex-wrap items-center gap-2">
+              {confirmingDelete ? (
+                <m.div
+                  initial={{ opacity: 0, x: 8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  role="alertdialog"
+                  aria-labelledby="confirm-delete-label"
+                  className="flex flex-wrap items-center gap-2 rounded-full border border-red-200 bg-red-50 py-1.5 pl-4 pr-1.5"
+                >
+                  <span id="confirm-delete-label" className="text-sm font-semibold text-red-800">
+                    Delete this recipe?
+                  </span>
+                  <button
+                    ref={cancelDeleteRef}
+                    type="button"
+                    onClick={() => setConfirmingDelete(false)}
+                    disabled={deleting}
+                    className="rounded-full px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-white"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    className={`${buttonStyles.danger} px-4! py-1.5! text-sm`}
+                  >
+                    {deleting ? <Spinner className="size-4" /> : <TrashIcon size={16} weight="bold" aria-hidden="true" />}
+                    {deleting ? 'Deleting…' : 'Delete'}
+                  </button>
+                </m.div>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleFavorite}
+                    disabled={favoritePending}
+                    aria-pressed={recipe.isFavorite}
+                    className={`${buttonStyles.secondary} ${recipe.isFavorite ? 'border-accent-200! bg-accent-50! text-accent-700!' : ''}`}
+                  >
+                    <HeartIcon size={18} weight={recipe.isFavorite ? 'fill' : 'bold'} aria-hidden="true" />
+                    {recipe.isFavorite ? 'Favorite' : 'Add to favorites'}
+                  </button>
+                  <Link to={paths.edit(recipe.id)} className={buttonStyles.secondary}>
+                    <PencilSimpleIcon size={18} weight="bold" aria-hidden="true" />
+                    Edit
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingDelete(true)}
+                    className={`${buttonStyles.secondary} hover:border-red-200! hover:bg-red-50! hover:text-red-700!`}
+                  >
+                    <TrashIcon size={18} weight="bold" aria-hidden="true" />
+                    Delete
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
+          {!authenticated && recipe.isFavorite && (
+            <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent-700">
+              <HeartIcon size={18} weight="fill" aria-hidden="true" /> Favorite
+            </span>
+          )}
+        </div>
+
+        {/* Body */}
+        <div className="grid grid-cols-1 gap-12 p-6 md:grid-cols-12 md:p-10">
+          <section className="md:col-span-5 lg:col-span-4" aria-labelledby="ingredients-heading">
+            <div className="mb-5 flex items-baseline justify-between gap-4">
+              <h2 id="ingredients-heading" className="font-display text-2xl font-semibold text-stone-900">
+                Ingredients
+              </h2>
+              {checked.size > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setChecked(new Set())}
+                  className="text-sm font-medium text-brand-700 hover:text-brand-900"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+            {ingredients.length === 0 ? (
+              <p className="text-stone-500">No ingredients listed.</p>
+            ) : (
+              <ul className="divide-y divide-stone-100">
+                {ingredients.map((ingredient, index) => {
+                  const isChecked = checked.has(index);
+                  const amount = [ingredient.quantity, ingredient.unit].filter(Boolean).join(' ');
+                  return (
+                    // Index keys are safe: the list is static for the lifetime of this view.
+                    <li key={index}>
+                      <label className="group flex cursor-pointer items-start gap-3 py-3">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleIngredient(index)}
+                          className="peer sr-only"
+                        />
+                        <span
+                          className={`mt-0.5 grid size-5 shrink-0 place-items-center rounded-md border-2 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-brand-600 peer-focus-visible:ring-offset-2 ${
+                            isChecked ? 'border-brand-600 bg-brand-600 text-white' : 'border-stone-300 bg-white group-hover:border-brand-500'
+                          }`}
+                          aria-hidden="true"
+                        >
+                          {isChecked && <CheckIcon size={12} weight="bold" />}
+                        </span>
+                        <span className={`leading-relaxed transition-colors ${isChecked ? 'text-stone-400 line-through' : 'text-stone-700'}`}>
+                          {amount && <span className={`font-semibold ${isChecked ? '' : 'text-stone-900'}`}>{amount} </span>}
+                          {ingredient.name}
+                        </span>
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+
+          <section className="md:col-span-7 lg:col-span-8" aria-labelledby="instructions-heading">
+            <h2 id="instructions-heading" className="mb-5 font-display text-2xl font-semibold text-stone-900">
+              Instructions
+            </h2>
+            {instructions.length === 0 ? (
+              <p className="text-stone-500">No instructions listed.</p>
+            ) : (
+              <ol className="space-y-6">
+                {instructions.map((step, index) => (
+                  <li key={index} className="flex gap-4">
+                    <span
+                      className="grid size-8 shrink-0 place-items-center rounded-full bg-stone-900 text-sm font-bold text-white"
+                      aria-hidden="true"
+                    >
+                      {index + 1}
+                    </span>
+                    <p className="whitespace-pre-line pt-0.5 leading-relaxed text-stone-700">
+                      <span className="sr-only">Step {index + 1}: </span>
+                      {step}
+                    </p>
+                  </li>
+                ))}
+              </ol>
+            )}
+
+            {recipe.notes && (
+              <aside className="mt-12 rounded-2xl border border-amber-200/70 bg-amber-50/70 p-6">
+                <h3 className="mb-2 text-sm font-bold uppercase tracking-wider text-amber-900">Chef's notes</h3>
+                <p className="whitespace-pre-line leading-relaxed text-amber-900/90">{recipe.notes}</p>
+              </aside>
+            )}
+          </section>
+        </div>
+      </div>
+    </article>
+  );
+}
