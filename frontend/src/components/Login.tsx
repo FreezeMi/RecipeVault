@@ -1,78 +1,102 @@
-import React, { useState } from 'react';
-import { authApi } from '../services/api';
+import { useEffect, useState, type FormEvent } from 'react';
+import { LockKeyIcon } from '@phosphor-icons/react';
 import { useAuth } from './AuthContext';
+import { useToast } from './Toast';
+import { toErrorMessage } from '../services/api';
+import { navigate, paths, useLocation } from '../lib/router';
+import { useDocumentTitle } from '../lib/hooks';
+import { Notice, Spinner, buttonStyles, cardClass, inputClass, labelClass } from './ui';
 
-interface LoginProps {
-  readonly onSuccess: () => void;
-}
+/** Only allow same-app paths as redirect targets (prevents open redirects like `//evil.com`). */
+export const safeRedirectPath = (value: string | null): string =>
+  value?.startsWith('/') && !value.startsWith('//') && !value.startsWith('/\\') ? value : paths.list();
 
-export default function Login({ onSuccess }: LoginProps) {
+export default function Login() {
+  const { search } = useLocation();
+  const next = safeRedirectPath(new URLSearchParams(search).get('next'));
+  const { authenticated, login } = useAuth();
+  const toast = useToast();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { checkAuth } = useAuth();
 
-  const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  useDocumentTitle('Sign in');
+
+  // Already signed in (e.g. visiting /login directly): continue to the destination.
+  useEffect(() => {
+    if (authenticated && !loading) navigate(next, { replace: true });
+  }, [authenticated, loading, next]);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setError('');
     setLoading(true);
 
     try {
-      await authApi.login(email, password);
-      await checkAuth();
-      onSuccess();
-    } catch (err: any) {
-      setError(err.message || 'Invalid email or password.');
-    } finally {
+      await login(email.trim(), password);
+      toast.success('Welcome back!');
+      navigate(next, { replace: true });
+    } catch (err) {
+      setError(toErrorMessage(err, 'Invalid email or password.'));
       setLoading(false);
     }
   };
 
   return (
-    <div className="max-w-md mx-auto mt-12 bg-white/95 md:bg-white/60 backdrop-blur-none md:backdrop-blur-xl border border-white/40 p-8 rounded-3xl shadow-xl">
-      <h2 className="text-2xl font-bold mb-6 text-stone-800 text-center">Sign in</h2>
-      
+    <div className={`${cardClass} mx-auto mt-6 max-w-md p-8 md:mt-12 md:p-10`}>
+      <div className="mb-8 text-center">
+        <span className="mx-auto mb-4 grid size-12 place-items-center rounded-2xl bg-brand-50 text-brand-600">
+          <LockKeyIcon size={26} weight="duotone" aria-hidden="true" />
+        </span>
+        <h1 className="font-display text-3xl font-semibold tracking-tight text-stone-900">Sign in</h1>
+        <p className="mt-2 text-stone-600">Sign in to add, edit and organize recipes.</p>
+      </div>
+
       {error && (
-        <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-xl border border-red-100 text-sm">
-          {error}
+        <div className="mb-6">
+          <Notice tone="error">{error}</Notice>
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>
-          <label htmlFor="email" className="block text-sm font-medium text-stone-600 mb-1.5">Email</label>
+          <label htmlFor="email" className={labelClass}>
+            Email
+          </label>
           <input
             id="email"
             type="email"
+            autoComplete="username"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={e => setEmail(e.target.value)}
             required
-            className="w-full px-4 py-2.5 rounded-xl border border-stone-200 bg-white/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
-          />
-        </div>
-        
-        <div>
-          <label htmlFor="password" className="block text-sm font-medium text-stone-600 mb-1.5">Password</label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            className="w-full px-4 py-2.5 rounded-xl border border-stone-200 bg-white/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
+            autoFocus
+            className={inputClass}
           />
         </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full py-3 px-4 bg-brand-500 text-white rounded-xl font-medium shadow-lg shadow-brand-500/20 hover:bg-brand-600 active:bg-brand-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-2"
-        >
-          {loading ? 'Signing in...' : 'Sign in'}
+        <div>
+          <label htmlFor="password" className={labelClass}>
+            Password
+          </label>
+          <input
+            id="password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            required
+            className={inputClass}
+          />
+        </div>
+
+        <button type="submit" disabled={loading} className={`${buttonStyles.primary} mt-2 w-full py-3!`}>
+          {loading && <Spinner className="size-5" />}
+          {loading ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
     </div>
   );
 }
-

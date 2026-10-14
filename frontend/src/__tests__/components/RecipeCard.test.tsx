@@ -1,12 +1,13 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
 import RecipeCard from '../../components/RecipeCard';
+import type { Recipe } from '../../types';
 
-const mockRecipe = {
+const mockRecipe: Recipe = {
   id: 1,
   title: 'Test Recipe',
   description: 'A delicious test recipe',
-  tags: JSON.stringify(['Dessert', 'Quick']),
+  tags: JSON.stringify(['Dessert', 'Quick', 'Baking']),
   prepTime: 10,
   cookTime: 20,
   servings: 4,
@@ -20,38 +21,38 @@ const mockRecipe = {
   updatedAt: new Date().toISOString(),
 };
 
-test('RecipeCard renders correctly', () => {
-  const onClick = vi.fn();
-  const onFavorite = vi.fn();
+test('renders title, description, time, servings and tags', () => {
+  render(<RecipeCard recipe={mockRecipe} />);
 
-  render(<RecipeCard recipe={mockRecipe} onClick={onClick} onFavorite={onFavorite} />);
-
-  // Check if title is rendered
-  expect(screen.getByText('Test Recipe')).toBeInTheDocument();
-  // Check if description is rendered
   expect(screen.getByText('A delicious test recipe')).toBeInTheDocument();
-  // Check total time calculation (10 + 20)
   expect(screen.getByText('30 min')).toBeInTheDocument();
-  // Check servings
   expect(screen.getByText('4 servings')).toBeInTheDocument();
-  // Check tags badge (it renders the first tag and +1 for the rest)
   expect(screen.getByText('Dessert')).toBeInTheDocument();
+  expect(screen.getByText('Quick')).toBeInTheDocument();
   expect(screen.getByText('+1')).toBeInTheDocument();
 });
 
-test('RecipeCard handles interactions', () => {
-  const onClick = vi.fn();
-  const onFavorite = vi.fn();
-
-  render(<RecipeCard recipe={mockRecipe} onClick={onClick} onFavorite={onFavorite} />);
-
-  // Click on the card
-  fireEvent.click(screen.getByText('Test Recipe'));
-  expect(onClick).toHaveBeenCalledWith(1);
-
-  // Click on the favorite button
-  const favoriteButton = screen.getByTitle('Favorite');
-  fireEvent.click(favoriteButton);
-  expect(onFavorite).toHaveBeenCalledTimes(1);
+test('the title is a real link to the recipe page', () => {
+  render(<RecipeCard recipe={mockRecipe} />);
+  expect(screen.getByRole('link', { name: 'Test Recipe' })).toHaveAttribute('href', '/recipes/1');
 });
 
+test('visitors get no favorite toggle', () => {
+  render(<RecipeCard recipe={mockRecipe} />);
+  expect(screen.queryByRole('button')).not.toBeInTheDocument();
+});
+
+test('signed-in users can toggle favorites', () => {
+  const onToggleFavorite = vi.fn();
+  render(<RecipeCard recipe={mockRecipe} onToggleFavorite={onToggleFavorite} />);
+
+  const button = screen.getByRole('button', { name: 'Add Test Recipe to favorites' });
+  expect(button).toHaveAttribute('aria-pressed', 'false');
+  fireEvent.click(button);
+  expect(onToggleFavorite).toHaveBeenCalledWith(mockRecipe);
+});
+
+test('unsafe image URLs are never rendered', () => {
+  const { container } = render(<RecipeCard recipe={{ ...mockRecipe, imageUrl: 'javascript:alert(1)' }} />);
+  expect(container.querySelector('img')).toBeNull();
+});

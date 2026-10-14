@@ -1,39 +1,38 @@
-import { createContext, useContext, useState, useEffect, ReactNode, useMemo, useCallback } from 'react';
-import { authApi } from '../services/api';
-
-interface User {
-  id: string;
-  email: string;
-}
+import { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef, type ReactNode } from 'react';
+import { authApi, setUnauthorizedHandler } from '../services/api';
+import { useToast } from './Toast';
+import type { User } from '../types';
 
 interface AuthContextType {
   authenticated: boolean;
   user: User | null;
+  /** True until the initial session check has finished. */
   loading: boolean;
-  checkAuth: () => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  /** Clears local auth state without calling the server (e.g. after the server revoked the session). */
+  clearSession: () => void;
+  checkAuth: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [authenticated, setAuthenticated] = useState<boolean>(false);
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState(true);
+  const toast = useToast();
+  const userRef = useRef<User | null>(null);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
   const checkAuth = useCallback(async () => {
     try {
       const data = await authApi.getMe();
-      if (data.authenticated) {
-        setAuthenticated(true);
-        setUser(data.user);
-      } else {
-        setAuthenticated(false);
-        setUser(null);
-      }
+      setUser(data.authenticated && data.user ? data.user : null);
     } catch (error) {
       console.error('Auth check failed:', error);
-      setAuthenticated(false);
       setUser(null);
     } finally {
       setLoading(false);
@@ -41,28 +40,43 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   useEffect(() => {
-    checkAuth();
+    void checkAuth();
   }, [checkAuth]);
+
+  // A 401 on an authenticated request means the session expired or was revoked elsewhere.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      if (userRef.current) {
+        setUser(null);
+        toast.error('Your session has expired. Please sign in again.');
+      }
+    });
+    return () => setUnauthorizedHandler(null);
+  }, [toast]);
+
+  const login = useCallback(async (email: string, password: string) => {
+    const { user } = await authApi.login(email, password);
+    setUser(user);
+  }, []);
 
   const logout = useCallback(async () => {
     try {
       await authApi.logout();
+    } catch (error) {
+      console.error('Logout request failed:', error);
     } finally {
-      setAuthenticated(false);
       setUser(null);
     }
   }, []);
 
+  const clearSession = useCallback(() => setUser(null), []);
+
   const value = useMemo(
-    () => ({ authenticated, user, loading, checkAuth, logout }),
-    [authenticated, user, loading, checkAuth, logout]
+    () => ({ authenticated: user !== null, user, loading, login, logout, clearSession, checkAuth }),
+    [user, loading, login, logout, clearSession, checkAuth],
   );
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => {

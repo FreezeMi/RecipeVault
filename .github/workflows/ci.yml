@@ -7,11 +7,19 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test-frontend:
-    name: Test Frontend
+  frontend:
+    name: Frontend (typecheck, test, build)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -19,21 +27,29 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
-        working-directory: ./frontend
-        run: npm ci || npm install
+        run: npm ci
 
-      - name: Run frontend tests
-        working-directory: ./frontend
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Run tests
         run: npm test
 
-  test-backend-and-database:
-    name: Test Backend & Database
+      - name: Production build
+        run: npx vite build
+
+  backend:
+    name: Backend & Database (migrate, typecheck, test, build)
     runs-on: ubuntu-latest
-    
-    # We use a PostgreSQL service to test the database
+    defaults:
+      run:
+        working-directory: ./backend
+
     services:
       postgres:
         image: postgres:15
@@ -49,6 +65,10 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+    env:
+      DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/recipevault_test?schema=public
+      DATABASE_URL_UNPOOLED: postgresql://testuser:testpassword@localhost:5432/recipevault_test?schema=public
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -56,24 +76,29 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
 
       - name: Install dependencies
-        working-directory: ./backend
-        run: npm ci || npm install
+        run: npm ci
 
       - name: Generate Prisma Client
-        working-directory: ./backend
         run: npx prisma generate
 
-      - name: Run Prisma migrations / db push
-        working-directory: ./backend
-        env:
-          DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/recipevault_test?schema=public
-        run: npm run db:push
+      # Apply the real migration history, exactly like production does.
+      - name: Apply migrations
+        run: npx prisma migrate deploy
 
-      - name: Run backend tests
-        working-directory: ./backend
-        env:
-          DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/recipevault_test?schema=public
+      # Fails if schema.prisma was changed without a matching migration.
+      - name: Check for schema drift
+        run: npx prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Run tests
         run: npm test
+
+      - name: Production build
+        run: npm run build

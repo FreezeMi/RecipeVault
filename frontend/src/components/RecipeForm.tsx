@@ -1,341 +1,654 @@
-import React, { useState, useEffect } from 'react';
-import type { Recipe, RecipeFormData, Ingredient } from '../types';
-import { api } from '../services/api';
-import {ArrowLeftIcon, PlusIcon, XIcon, FloppyDiskIcon} from '@phosphor-icons/react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { PlusIcon, XIcon, FloppyDiskIcon, ArrowUpIcon, ArrowDownIcon, HeartIcon } from '@phosphor-icons/react';
+import type { Recipe, RecipeInput } from '../types';
+import { api, ApiError, toErrorMessage } from '../services/api';
 import { RECIPE_CATEGORIES } from '../constants';
+import { parseIngredients, parseInstructions, parseTags, safeHttpUrl } from '../lib/recipe';
+import { navigate, paths, useScrollRestoration } from '../lib/router';
+import { useDocumentTitle, useRecipe } from '../lib/hooks';
+import { useToast } from './Toast';
+import RecipeImage from './RecipeImage';
+import { BackLink, Notice, PageLoader, Spinner, buttonStyles, cardClass, inputClass, labelClass } from './ui';
 
-interface Props {
-  recipe?: Recipe;
-  onSave: () => void;
-  onCancel: () => void;
+// Mirrors the server-side limits in backend/src/validation.ts.
+const MAX_MINUTES = 7 * 24 * 60;
+const MAX_SERVINGS = 1000;
+
+// Each dynamic row gets a stable key so React keeps the same input mounted while the user types.
+let rowKeySeq = 0;
+const nextRowKey = () => ++rowKeySeq;
+
+interface IngredientRow {
+  key: number;
+  quantity: string;
+  unit: string;
+  name: string;
 }
 
-const parseIngredients = (jsonStr: string): Ingredient[] => {
-  try {
-    const parsed = JSON.parse(jsonStr);
-    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-  } catch (e) {
-    console.error(e);
-  }
-  return [{ quantity: '', unit: '', name: '' }];
+interface StepRow {
+  key: number;
+  text: string;
+}
+
+interface FormState {
+  title: string;
+  description: string;
+  tags: string[];
+  prepTime: string;
+  cookTime: string;
+  servings: string;
+  imageUrl: string;
+  sourceUrl: string;
+  ingredients: IngredientRow[];
+  instructions: StepRow[];
+  notes: string;
+  isFavorite: boolean;
+}
+
+type FieldName = 'title' | 'prepTime' | 'cookTime' | 'servings' | 'imageUrl' | 'sourceUrl' | 'ingredients' | 'instructions';
+type FieldErrors = Partial<Record<FieldName, string>>;
+
+const emptyIngredient = (): IngredientRow => ({ key: nextRowKey(), quantity: '', unit: '', name: '' });
+const emptyStep = (): StepRow => ({ key: nextRowKey(), text: '' });
+
+const toFormState = (recipe?: Recipe): FormState => {
+  const ingredients = recipe ? parseIngredients(recipe.ingredients) : [];
+  const instructions = recipe ? parseInstructions(recipe.instructions) : [];
+  return {
+    title: recipe?.title ?? '',
+    description: recipe?.description ?? '',
+    tags: recipe ? parseTags(recipe.tags) : [],
+    prepTime: recipe?.prepTime?.toString() ?? '',
+    cookTime: recipe?.cookTime?.toString() ?? '',
+    servings: recipe?.servings?.toString() ?? '',
+    imageUrl: recipe?.imageUrl ?? '',
+    sourceUrl: recipe?.sourceUrl ?? '',
+    ingredients: ingredients.length ? ingredients.map(i => ({ ...i, key: nextRowKey() })) : [emptyIngredient()],
+    instructions: instructions.length ? instructions.map(text => ({ key: nextRowKey(), text })) : [emptyStep()],
+    notes: recipe?.notes ?? '',
+    isFavorite: recipe?.isFavorite ?? false,
+  };
 };
 
-const parseInstructions = (jsonStr: string): string[] => {
-  try {
-    const parsed = JSON.parse(jsonStr);
-    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-  } catch (e) {
-    console.error(e);
-  }
-  return [''];
-};
-
-const parseTags = (jsonStr?: string | null): string[] => {
-  try {
-    const parsed = JSON.parse(jsonStr || '[]');
-    if (Array.isArray(parsed)) return parsed;
-  } catch (e) {
-    console.error(e);
-  }
-  return [];
-};
-
-const RecipeForm: React.FC<Props> = ({ recipe, onSave, onCancel }) => {
-  const [formData, setFormData] = useState<RecipeFormData>({
-    title: '',
-    description: '',
-    tags: [],
-    prepTime: '',
-    cookTime: '',
-    servings: '',
-    imageUrl: '',
-    sourceUrl: '',
-    ingredients: [{ quantity: '', unit: '', name: '' }],
-    instructions: [''],
-    notes: '',
-    isFavorite: false,
+/** Snapshot without row keys, used to detect unsaved changes. */
+const snapshot = (state: FormState) =>
+  JSON.stringify({
+    ...state,
+    ingredients: state.ingredients.map(({ quantity, unit, name }) => [quantity, unit, name]),
+    instructions: state.instructions.map(step => step.text),
   });
-  
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (recipe) {
-      setFormData({
-        title: recipe.title,
-        description: recipe.description || '',
-        tags: parseTags(recipe.tags),
-        prepTime: recipe.prepTime ?? '',
-        cookTime: recipe.cookTime ?? '',
-        servings: recipe.servings ?? '',
-        imageUrl: recipe.imageUrl || '',
-        sourceUrl: recipe.sourceUrl || '',
-        ingredients: parseIngredients(recipe.ingredients),
-        instructions: parseInstructions(recipe.instructions),
-        notes: recipe.notes || '',
-        isFavorite: recipe.isFavorite,
-      });
+const parseOptionalInt = (value: string) => (value.trim() === '' ? null : Number(value));
+
+function validate(state: FormState): FieldErrors {
+  const errors: FieldErrors = {};
+  if (!state.title.trim()) errors.title = 'Give your recipe a title.';
+
+  const checkInt = (field: 'prepTime' | 'cookTime' | 'servings', min: number, max: number, label: string) => {
+    const value = parseOptionalInt(state[field]);
+    if (value !== null && (!Number.isInteger(value) || value < min || value > max)) {
+      errors[field] = `${label} must be a whole number between ${min} and ${max}.`;
     }
-  }, [recipe]);
+  };
+  checkInt('prepTime', 0, MAX_MINUTES, 'Prep time');
+  checkInt('cookTime', 0, MAX_MINUTES, 'Cook time');
+  checkInt('servings', 1, MAX_SERVINGS, 'Servings');
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+  if (state.imageUrl.trim() && !safeHttpUrl(state.imageUrl)) errors.imageUrl = 'Enter a full image link starting with https://';
+  if (state.sourceUrl.trim() && !safeHttpUrl(state.sourceUrl)) errors.sourceUrl = 'Enter a full link starting with https://';
+
+  if (!state.ingredients.some(i => i.name.trim())) errors.ingredients = 'Add at least one ingredient.';
+  if (!state.instructions.some(s => s.text.trim())) errors.instructions = 'Add at least one step.';
+  return errors;
+}
+
+const toPayload = (state: FormState): RecipeInput => ({
+  title: state.title.trim(),
+  description: state.description.trim(),
+  tags: state.tags,
+  prepTime: parseOptionalInt(state.prepTime),
+  cookTime: parseOptionalInt(state.cookTime),
+  servings: parseOptionalInt(state.servings),
+  imageUrl: state.imageUrl.trim(),
+  sourceUrl: state.sourceUrl.trim(),
+  ingredients: state.ingredients
+    .filter(i => i.name.trim())
+    .map(({ quantity, unit, name }) => ({ quantity: quantity.trim(), unit: unit.trim(), name: name.trim() })),
+  instructions: state.instructions.map(s => s.text.trim()).filter(Boolean),
+  notes: state.notes.trim(),
+  isFavorite: state.isFavorite,
+});
+
+const FIELD_ORDER: FieldName[] = ['title', 'imageUrl', 'sourceUrl', 'prepTime', 'cookTime', 'servings', 'ingredients', 'instructions'];
+
+function FieldError({ id, message }: Readonly<{ id: string; message?: string }>) {
+  if (!message) return null;
+  return (
+    <p id={id} className="mt-1.5 text-sm font-medium text-red-700">
+      {message}
+    </p>
+  );
+}
+
+function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
+  const isEdit = recipe !== undefined;
+  const toast = useToast();
+  const initial = useMemo(() => toFormState(recipe), [recipe]);
+  const [form, setForm] = useState<FormState>(initial);
+  const [errors, setErrors] = useState<FieldErrors>({});
+  const [serverError, setServerError] = useState<{ message: string; details?: string[] } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const focusAfterRender = useRef<string | null>(null);
+  const serverErrorRef = useRef<HTMLDivElement>(null);
+
+  useDocumentTitle(isEdit ? `Edit ${recipe.title}` : 'New recipe');
+  useScrollRestoration(true);
+
+  const isDirty = snapshot(form) !== snapshot(initial);
+
+  // Warn before closing the tab with unsaved changes.
+  useEffect(() => {
+    if (!isDirty || saving) return;
+    const handler = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty, saving]);
+
+  // Move focus to a newly added row once it exists in the DOM.
+  useEffect(() => {
+    if (focusAfterRender.current) {
+      document.getElementById(focusAfterRender.current)?.focus();
+      focusAfterRender.current = null;
+    }
+  });
+
+  const update = <K extends keyof FormState>(field: K, value: FormState[K]) => {
+    setForm(prev => ({ ...prev, [field]: value }));
+    if (field in errors) setErrors(prev => ({ ...prev, [field]: undefined }));
   };
 
-  const toggleTag = (tag: string) => {
-    setFormData(prev => ({
-      ...prev,
-      tags: prev.tags.includes(tag) 
-        ? prev.tags.filter(t => t !== tag)
-        : [...prev.tags, tag]
-    }));
+  const toggleTag = (tag: string) =>
+    update('tags', form.tags.includes(tag) ? form.tags.filter(t => t !== tag) : [...form.tags, tag]);
+
+  // Predefined categories plus any custom tags the recipe already has (so they're never silently lost).
+  const availableTags = useMemo(
+    () => [...RECIPE_CATEGORIES, ...initial.tags.filter(tag => !RECIPE_CATEGORIES.includes(tag))],
+    [initial.tags],
+  );
+
+  // --- Ingredients ---
+  const updateIngredient = (key: number, field: 'quantity' | 'unit' | 'name', value: string) => {
+    update('ingredients', form.ingredients.map(row => (row.key === key ? { ...row, [field]: value } : row)));
+  };
+  const addIngredient = (afterKey?: number) => {
+    const row = emptyIngredient();
+    const index = afterKey === undefined ? form.ingredients.length : form.ingredients.findIndex(r => r.key === afterKey) + 1;
+    update('ingredients', [...form.ingredients.slice(0, index), row, ...form.ingredients.slice(index)]);
+    focusAfterRender.current = `ingredient-${row.key}-quantity`;
+  };
+  const removeIngredient = (key: number) => {
+    const remaining = form.ingredients.filter(row => row.key !== key);
+    update('ingredients', remaining.length ? remaining : [emptyIngredient()]);
+  };
+  const handleIngredientKeyDown = (event: KeyboardEvent<HTMLInputElement>, key: number) => {
+    // Enter adds the next ingredient instead of submitting the form.
+    if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      addIngredient(key);
+    }
   };
 
-  const handleIngredientChange = (index: number, field: keyof Ingredient, value: string) => {
-    const newIngredients = [...formData.ingredients];
-    newIngredients[index] = { ...newIngredients[index], [field]: value };
-    setFormData(prev => ({ ...prev, ingredients: newIngredients }));
+  // --- Instructions ---
+  const updateStep = (key: number, text: string) => {
+    update('instructions', form.instructions.map(step => (step.key === key ? { ...step, text } : step)));
+  };
+  const addStep = () => {
+    const step = emptyStep();
+    update('instructions', [...form.instructions, step]);
+    focusAfterRender.current = `step-${step.key}`;
+  };
+  const removeStep = (key: number) => {
+    const remaining = form.instructions.filter(step => step.key !== key);
+    update('instructions', remaining.length ? remaining : [emptyStep()]);
+  };
+  const moveStep = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= form.instructions.length) return;
+    const next = [...form.instructions];
+    [next[index], next[target]] = [next[target]!, next[index]!];
+    update('instructions', next);
+    focusAfterRender.current = `step-move-${direction === -1 ? 'up' : 'down'}-${next[target]!.key}`;
   };
 
-  const addIngredient = () => {
-    setFormData(prev => ({ ...prev, ingredients: [...prev.ingredients, { name: '', quantity: '', unit: '' }] }));
+  const leave = () => navigate(isEdit ? paths.detail(recipe.id) : paths.list(), { replace: true });
+
+  const handleCancel = () => {
+    if (!isDirty || window.confirm('Discard your unsaved changes?')) leave();
   };
 
-  const removeIngredient = (index: number) => {
-    setFormData(prev => ({ ...prev, ingredients: prev.ingredients.filter((_, i) => i !== index) }));
-  };
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setServerError(null);
 
-  const handleInstructionChange = (index: number, value: string) => {
-    const newInstructions = [...formData.instructions];
-    newInstructions[index] = value;
-    setFormData(prev => ({ ...prev, instructions: newInstructions }));
-  };
-
-  const addInstruction = () => {
-    setFormData(prev => ({ ...prev, instructions: [...prev.instructions, ''] }));
-  };
-
-  const removeInstruction = (index: number) => {
-    setFormData(prev => ({ ...prev, instructions: prev.instructions.filter((_, i) => i !== index) }));
-  };
-
-  const validateFormData = (): { valid: boolean; error?: string; cleanIngredients?: typeof formData.ingredients; cleanInstructions?: typeof formData.instructions } => {
-    const prep = formData.prepTime === '' ? null : Number(formData.prepTime);
-    const cook = formData.cookTime === '' ? null : Number(formData.cookTime);
-    const serv = formData.servings === '' ? null : Number(formData.servings);
-    
-    if (prep !== null && prep < 0) return { valid: false, error: 'Prep time must be >= 0' };
-    if (cook !== null && cook < 0) return { valid: false, error: 'Cook time must be >= 0' };
-    if (serv !== null && serv <= 0) return { valid: false, error: 'Servings must be > 0' };
-
-    const cleanIngredients = formData.ingredients.filter(i => i.name.trim() !== '');
-    if (cleanIngredients.length === 0) return { valid: false, error: 'At least one ingredient is required' };
-
-    const cleanInstructions = formData.instructions.filter(i => i.trim() !== '');
-    if (cleanInstructions.length === 0) return { valid: false, error: 'At least one instruction step is required' };
-
-    return { valid: true, cleanIngredients, cleanInstructions };
-  };
-
-  const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    const validation = validateFormData();
-    if (!validation.valid) {
-      setError(validation.error || 'Validation failed');
-      setLoading(false);
+    const fieldErrors = validate(form);
+    setErrors(fieldErrors);
+    const firstInvalid = FIELD_ORDER.find(field => fieldErrors[field]);
+    if (firstInvalid) {
+      const target =
+        firstInvalid === 'ingredients'
+          ? `ingredient-${form.ingredients[0]!.key}-name`
+          : firstInvalid === 'instructions'
+            ? `step-${form.instructions[0]!.key}`
+            : firstInvalid;
+      document.getElementById(target)?.focus();
       return;
     }
 
+    setSaving(true);
     try {
-      const payload: RecipeFormData = {
-        ...formData,
-        prepTime: formData.prepTime === '' ? '' : Number(formData.prepTime),
-        cookTime: formData.cookTime === '' ? '' : Number(formData.cookTime),
-        servings: formData.servings === '' ? '' : Number(formData.servings),
-        ingredients: validation.cleanIngredients!,
-        instructions: validation.cleanInstructions!
-      };
-
-      if (recipe) {
-        await api.updateRecipe(recipe.id, payload);
-      } else {
-        await api.createRecipe(payload);
-      }
-      onSave();
-    } catch {
-      setError('Failed to save recipe. Please check all required fields.');
-    } finally {
-      setLoading(false);
+      const payload = toPayload(form);
+      const saved = isEdit ? await api.updateRecipe(recipe.id, payload) : await api.createRecipe(payload);
+      toast.success(isEdit ? 'Recipe updated.' : 'Recipe added to your vault.');
+      navigate(paths.detail(saved.id), { replace: true });
+    } catch (err) {
+      setSaving(false);
+      setServerError({
+        message: toErrorMessage(err, 'Failed to save recipe.'),
+        details: err instanceof ApiError && err.details && err.details.length > 1 ? err.details : undefined,
+      });
+      requestAnimationFrame(() => serverErrorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
     }
   };
 
-  const baseInputClass = "px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-brand-500 focus:bg-white focus:border-brand-500 outline-none transition-all placeholder:text-stone-400";
-  const inputClass = `w-full ${baseInputClass}`;
-  const labelClass = "block text-sm font-bold text-stone-700 mb-1.5 uppercase tracking-wide";
+  const fieldProps = (field: FieldName) => ({
+    'aria-invalid': errors[field] ? true : undefined,
+    'aria-describedby': errors[field] ? `${field}-error` : undefined,
+  });
+
+  const imagePreview = safeHttpUrl(form.imageUrl);
+  const errorCount = Object.values(errors).filter(Boolean).length;
 
   return (
-    <div className="max-w-3xl mx-auto pb-10">
-      <button type="button" onClick={onCancel} className="flex items-center gap-2 text-stone-500 hover:text-stone-900 transition-colors mb-6 font-medium">
-        <ArrowLeftIcon /> Cancel
-      </button>
+    <div className="mx-auto max-w-3xl">
+      <BackLink to={isEdit ? paths.detail(recipe.id) : paths.list()}>{isEdit ? 'Back to recipe' : 'Back to recipes'}</BackLink>
 
-      <div className="bg-white/95 p-8 md:p-12 rounded-3xl shadow-xl shadow-black/5 border border-white/60">
-        <h2 className="text-3xl font-bold text-stone-900 mb-8">{recipe ? 'Edit Recipe' : 'Add New Recipe'}</h2>
-        
-        {error && (
-          <div className="bg-red-50 text-red-600 p-4 rounded-xl mb-8 border border-red-200 text-sm font-medium">
-            {error}
-          </div>
-        )}
-        
-        <form onSubmit={handleSubmit} className="space-y-8">
-          <div className="space-y-5">
+      <div className={`${cardClass} p-6 sm:p-8 md:p-12`}>
+        <h1 className="font-display text-3xl font-semibold tracking-tight text-stone-900 md:text-4xl">
+          {isEdit ? 'Edit recipe' : 'Add a new recipe'}
+        </h1>
+        <p className="mt-2 text-stone-600">
+          Fields marked with <span className="text-red-600">*</span> are required.
+        </p>
+
+        <div ref={serverErrorRef} className="mt-6 space-y-3 empty:hidden">
+          {serverError && (
+            <Notice tone="error">
+              <p className="font-semibold">{serverError.message}</p>
+              {serverError.details && (
+                <ul className="mt-1 list-disc pl-5">
+                  {serverError.details.map(detail => (
+                    <li key={detail}>{detail}</li>
+                  ))}
+                </ul>
+              )}
+            </Notice>
+          )}
+          {errorCount > 0 && (
+            <Notice tone="error">
+              Please fix {errorCount === 1 ? 'the highlighted field' : `the ${errorCount} highlighted fields`} below.
+            </Notice>
+          )}
+        </div>
+
+        <form onSubmit={handleSubmit} noValidate className="mt-8 space-y-10">
+          {/* Basics */}
+          <section className="space-y-5" aria-labelledby="basics-heading">
+            <h2 id="basics-heading" className="sr-only">
+              Basics
+            </h2>
             <div>
-              <label htmlFor="title" className={labelClass}>Title <span className="text-red-500">*</span></label>
-              <input id="title" type="text" name="title" value={formData.title} onChange={handleChange} className={inputClass} placeholder="e.g. Grandma's Apple Pie" required />
-            </div>
-            
-            <div>
-              <label htmlFor="description" className={labelClass}>Description</label>
-              <textarea id="description" name="description" value={formData.description} onChange={handleChange} rows={2} className={`${inputClass} resize-none`} placeholder="A short description of this dish..." />
+              <label htmlFor="title" className={labelClass}>
+                Title <span className="text-red-600">*</span>
+              </label>
+              <input
+                id="title"
+                type="text"
+                value={form.title}
+                onChange={e => update('title', e.target.value)}
+                className={inputClass}
+                placeholder="e.g. Grandma's apple pie"
+                maxLength={200}
+                autoComplete="off"
+                required
+                {...fieldProps('title')}
+              />
+              <FieldError id="title-error" message={errors.title} />
             </div>
 
             <div>
-              <div className={labelClass}>Tags</div>
-              <div className="flex flex-wrap gap-2 mt-2">
-                {RECIPE_CATEGORIES.map(tag => {
-                  const isSelected = formData.tags.includes(tag);
+              <label htmlFor="description" className={labelClass}>
+                Description
+              </label>
+              <textarea
+                id="description"
+                value={form.description}
+                onChange={e => update('description', e.target.value)}
+                rows={3}
+                maxLength={2000}
+                className={`${inputClass} resize-y`}
+                placeholder="A short description of this dish…"
+              />
+            </div>
+
+            <fieldset>
+              <legend className={labelClass}>Tags</legend>
+              <div className="mt-1 flex flex-wrap gap-2">
+                {availableTags.map(tag => {
+                  const selected = form.tags.includes(tag);
                   return (
                     <button
                       key={tag}
                       type="button"
+                      aria-pressed={selected}
                       onClick={() => toggleTag(tag)}
-                      className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all duration-200 shadow-sm border
-                        ${isSelected 
-                          ? 'bg-brand-600 text-white border-brand-600 shadow-md' 
-                          : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-50 hover:text-stone-900'
-                        }`}
+                      className={`rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors ${
+                        selected
+                          ? 'border-brand-600 bg-brand-600 text-white shadow-sm shadow-brand-600/20'
+                          : 'border-stone-200 bg-white text-stone-700 hover:border-stone-300 hover:bg-stone-50'
+                      }`}
                     >
                       {tag}
                     </button>
                   );
                 })}
               </div>
+            </fieldset>
+
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-[1fr_auto] sm:items-start">
+              <div>
+                <label htmlFor="imageUrl" className={labelClass}>
+                  Image link
+                </label>
+                <input
+                  id="imageUrl"
+                  type="url"
+                  inputMode="url"
+                  value={form.imageUrl}
+                  onChange={e => update('imageUrl', e.target.value)}
+                  className={inputClass}
+                  placeholder="https://example.com/photo.jpg"
+                  {...fieldProps('imageUrl')}
+                />
+                <FieldError id="imageUrl-error" message={errors.imageUrl} />
+                {!errors.imageUrl && (
+                  <p className="mt-1.5 text-sm text-stone-500">
+                    Paste a direct image address, or use https://picsum.photos/800/600 for a placeholder.
+                  </p>
+                )}
+              </div>
+              {imagePreview && (
+                <RecipeImage
+                  key={imagePreview}
+                  src={imagePreview}
+                  alt="Image preview"
+                  className="h-24 w-full rounded-2xl border border-stone-200 object-cover sm:mt-7 sm:w-32"
+                />
+              )}
             </div>
 
             <div>
-              <label htmlFor="imageUrl" className={labelClass}>Image URL</label>
-              <input id="imageUrl" type="url" name="imageUrl" value={formData.imageUrl} onChange={handleChange} className={inputClass} placeholder="https://example.com/image.jpg" />
+              <label htmlFor="sourceUrl" className={labelClass}>
+                Original recipe link
+              </label>
+              <input
+                id="sourceUrl"
+                type="url"
+                inputMode="url"
+                value={form.sourceUrl}
+                onChange={e => update('sourceUrl', e.target.value)}
+                className={inputClass}
+                placeholder="https://www.example.com/recipe"
+                {...fieldProps('sourceUrl')}
+              />
+              <FieldError id="sourceUrl-error" message={errors.sourceUrl} />
             </div>
 
-            <div>
-              <label htmlFor="sourceUrl" className={labelClass}>Original Recipe Link</label>
-              <input id="sourceUrl" type="url" name="sourceUrl" value={formData.sourceUrl} onChange={handleChange} className={inputClass} placeholder="https://www.daringgourmet.com/..." />
+            <div className="grid grid-cols-3 gap-3 sm:gap-5">
+              {(
+                [
+                  ['prepTime', 'Prep (min)', '15', 0, MAX_MINUTES],
+                  ['cookTime', 'Cook (min)', '45', 0, MAX_MINUTES],
+                  ['servings', 'Servings', '4', 1, MAX_SERVINGS],
+                ] as const
+              ).map(([field, label, placeholder, min, max]) => (
+                <div key={field}>
+                  <label htmlFor={field} className={labelClass}>
+                    {label}
+                  </label>
+                  <input
+                    id={field}
+                    type="number"
+                    inputMode="numeric"
+                    min={min}
+                    max={max}
+                    step={1}
+                    value={form[field]}
+                    onChange={e => update(field, e.target.value)}
+                    className={inputClass}
+                    placeholder={placeholder}
+                    {...fieldProps(field)}
+                  />
+                  <FieldError id={`${field}-error`} message={errors[field]} />
+                </div>
+              ))}
             </div>
+          </section>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-              <div>
-                <label htmlFor="prepTime" className={labelClass}>Prep (min)</label>
-                <input id="prepTime" type="number" name="prepTime" value={formData.prepTime} onChange={handleChange} min="0" className={inputClass} placeholder="15" />
+          {/* Ingredients */}
+          <fieldset className="border-t border-stone-100 pt-8" aria-describedby={errors.ingredients ? 'ingredients-error' : undefined}>
+            <legend className="float-left mb-4 w-full font-display text-2xl font-semibold text-stone-900">
+              Ingredients <span className="text-base text-red-600">*</span>
+            </legend>
+            <div className="clear-both space-y-3">
+              <div className="hidden grid-cols-[5.5rem_6.5rem_1fr_2.5rem] gap-2 px-1 text-xs font-semibold uppercase tracking-wider text-stone-500 sm:grid">
+                <span>Qty</span>
+                <span>Unit</span>
+                <span>Ingredient</span>
               </div>
-              <div>
-                <label htmlFor="cookTime" className={labelClass}>Cook (min)</label>
-                <input id="cookTime" type="number" name="cookTime" value={formData.cookTime} onChange={handleChange} min="0" className={inputClass} placeholder="45" />
-              </div>
-              <div>
-                <label htmlFor="servings" className={labelClass}>Servings</label>
-                <input id="servings" type="number" name="servings" value={formData.servings} onChange={handleChange} min="1" className={inputClass} placeholder="4" />
-              </div>
+              {form.ingredients.map((row, index) => (
+                <div
+                  key={row.key}
+                  className="grid grid-cols-[1fr_1fr_2.5rem] gap-2 rounded-2xl border border-stone-100 p-2 sm:grid-cols-[5.5rem_6.5rem_1fr_2.5rem] sm:border-0 sm:p-0"
+                >
+                  <input
+                    id={`ingredient-${row.key}-quantity`}
+                    type="text"
+                    placeholder={index === 0 ? '200' : undefined}
+                    aria-label={`Ingredient ${index + 1} quantity`}
+                    value={row.quantity}
+                    maxLength={50}
+                    onChange={e => updateIngredient(row.key, 'quantity', e.target.value)}
+                    className={`${inputClass} px-3`}
+                  />
+                  <input
+                    type="text"
+                    placeholder={index === 0 ? 'g' : undefined}
+                    aria-label={`Ingredient ${index + 1} unit`}
+                    value={row.unit}
+                    maxLength={50}
+                    onChange={e => updateIngredient(row.key, 'unit', e.target.value)}
+                    className={`${inputClass} px-3`}
+                  />
+                  <input
+                    id={`ingredient-${row.key}-name`}
+                    type="text"
+                    placeholder={index === 0 ? 'flour' : 'Ingredient'}
+                    aria-label={`Ingredient ${index + 1} name`}
+                    value={row.name}
+                    maxLength={500}
+                    onChange={e => updateIngredient(row.key, 'name', e.target.value)}
+                    onKeyDown={e => handleIngredientKeyDown(e, row.key)}
+                    aria-invalid={errors.ingredients && index === 0 ? true : undefined}
+                    className={`${inputClass} col-span-2 row-start-2 sm:col-span-1 sm:row-start-auto`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeIngredient(row.key)}
+                    aria-label={`Remove ingredient ${index + 1}`}
+                    className={`${buttonStyles.icon} col-start-3 row-span-2 self-center hover:bg-red-50! hover:text-red-600! sm:col-start-auto sm:row-span-1`}
+                  >
+                    <XIcon size={18} weight="bold" aria-hidden="true" />
+                  </button>
+                </div>
+              ))}
             </div>
-          </div>
-
-          <hr className="border-stone-100" />
-
-          <div>
-            <div className={`${labelClass} text-lg flex items-center gap-2`}><span className="text-brand-500">1.</span> Ingredients <span className="text-red-500 text-base">*</span></div>
-            <div className="space-y-3 mt-4">
-              {formData.ingredients.map((ing, index) => {
-                const ingredientKey = `${ing.quantity || 'qty'}-${ing.unit || 'unit'}-${ing.name || 'ingredient'}`;
-
-                return (
-                  <div key={ingredientKey} className="flex flex-col sm:flex-row gap-2 items-start sm:items-center group">
-                    <div className="flex gap-2 w-full sm:w-auto">
-                      <input type="text" placeholder="Qty (200)" aria-label="Ingredient quantity" value={ing.quantity} onChange={(e) => handleIngredientChange(index, 'quantity', e.target.value)} className={`${baseInputClass} flex-1 sm:flex-none sm:w-20 md:w-24 shrink-0`} />
-                      <input type="text" placeholder="Unit (g)" aria-label="Ingredient unit" value={ing.unit} onChange={(e) => handleIngredientChange(index, 'unit', e.target.value)} className={`${baseInputClass} flex-1 sm:flex-none sm:w-20 md:w-24 shrink-0`} />
-                    </div>
-                    <div className="flex gap-2 w-full sm:w-auto sm:flex-1 items-center">
-                      <input type="text" placeholder="Ingredient name (flour)" aria-label="Ingredient name" value={ing.name} onChange={(e) => handleIngredientChange(index, 'name', e.target.value)} className={`${baseInputClass} flex-1 min-w-0`} />
-                      <button type="button" onClick={() => removeIngredient(index)} aria-label="Remove ingredient" className="p-2 text-stone-400 hover:text-red-500 transition-colors sm:opacity-50 group-hover:opacity-100 shrink-0">
-                        <XIcon size={20} weight="bold" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <button type="button" onClick={addIngredient} className="mt-3 flex items-center gap-1 text-sm font-semibold text-brand-600 hover:text-brand-700">
-              <PlusIcon size={16} weight="bold" /> Add ingredient
+            <FieldError id="ingredients-error" message={errors.ingredients} />
+            <button
+              type="button"
+              onClick={() => addIngredient()}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-full px-1 text-sm font-semibold text-brand-700 hover:text-brand-900"
+            >
+              <PlusIcon size={16} weight="bold" aria-hidden="true" /> Add ingredient
             </button>
-          </div>
+            <p className="mt-1 text-xs text-stone-500">Tip: press Enter in an ingredient name to add the next one.</p>
+          </fieldset>
 
-          <hr className="border-stone-100" />
-
-          <div>
-            <div className={`${labelClass} text-lg flex items-center gap-2`}><span className="text-brand-500">2.</span> Instructions <span className="text-red-500 text-base">*</span></div>
-            <div className="space-y-3 mt-4">
-              {formData.instructions.map((inst, index) => {
-                const instructionKey = `${inst || 'instruction'}-${index + 1}`;
-
-                return (
-                  <div key={instructionKey} className="flex gap-3 items-start group">
-                    <span className="mt-2.5 font-bold text-stone-400 w-6 text-right shrink-0">{index + 1}.</span>
-                    <input type="text" value={inst} aria-label={`Instruction step ${index + 1}`} onChange={(e) => handleInstructionChange(index, e.target.value)} placeholder="Describe this step..." className={`${baseInputClass} flex-1 min-w-0`} />
-                    <button type="button" onClick={() => removeInstruction(index)} aria-label="Remove step" className="mt-2.5 p-1 text-stone-400 hover:text-red-500 transition-colors opacity-50 group-hover:opacity-100 shrink-0">
-                      <XIcon size={20} weight="bold" />
+          {/* Instructions */}
+          <fieldset className="border-t border-stone-100 pt-8" aria-describedby={errors.instructions ? 'instructions-error' : undefined}>
+            <legend className="float-left mb-4 w-full font-display text-2xl font-semibold text-stone-900">
+              Instructions <span className="text-base text-red-600">*</span>
+            </legend>
+            <ol className="clear-both space-y-3">
+              {form.instructions.map((step, index) => (
+                <li key={step.key} className="flex items-start gap-3">
+                  <span
+                    className="mt-2.5 grid size-7 shrink-0 place-items-center rounded-full bg-stone-900 text-xs font-bold text-white"
+                    aria-hidden="true"
+                  >
+                    {index + 1}
+                  </span>
+                  <textarea
+                    id={`step-${step.key}`}
+                    value={step.text}
+                    rows={2}
+                    maxLength={5000}
+                    aria-label={`Step ${index + 1}`}
+                    aria-invalid={errors.instructions && index === 0 ? true : undefined}
+                    onChange={e => updateStep(step.key, e.target.value)}
+                    placeholder="Describe this step…"
+                    className={`${inputClass} min-h-[3.25rem] flex-1 resize-y [field-sizing:content]`}
+                  />
+                  <div className="flex shrink-0 flex-col">
+                    <button
+                      id={`step-move-up-${step.key}`}
+                      type="button"
+                      onClick={() => moveStep(index, -1)}
+                      disabled={index === 0}
+                      aria-label={`Move step ${index + 1} up`}
+                      className={`${buttonStyles.icon} p-1.5! disabled:opacity-30`}
+                    >
+                      <ArrowUpIcon size={16} weight="bold" aria-hidden="true" />
+                    </button>
+                    <button
+                      id={`step-move-down-${step.key}`}
+                      type="button"
+                      onClick={() => moveStep(index, 1)}
+                      disabled={index === form.instructions.length - 1}
+                      aria-label={`Move step ${index + 1} down`}
+                      className={`${buttonStyles.icon} p-1.5! disabled:opacity-30`}
+                    >
+                      <ArrowDownIcon size={16} weight="bold" aria-hidden="true" />
                     </button>
                   </div>
-                );
-              })}
-            </div>
-            <button type="button" onClick={addInstruction} className="mt-3 flex items-center gap-1 text-sm font-semibold text-brand-600 hover:text-brand-700">
-              <PlusIcon size={16} weight="bold" /> Add step
+                  <button
+                    type="button"
+                    onClick={() => removeStep(step.key)}
+                    aria-label={`Remove step ${index + 1}`}
+                    className={`${buttonStyles.icon} mt-1.5 hover:bg-red-50! hover:text-red-600!`}
+                  >
+                    <XIcon size={18} weight="bold" aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
+            </ol>
+            <FieldError id="instructions-error" message={errors.instructions} />
+            <button
+              type="button"
+              onClick={addStep}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-full px-1 text-sm font-semibold text-brand-700 hover:text-brand-900"
+            >
+              <PlusIcon size={16} weight="bold" aria-hidden="true" /> Add step
             </button>
-          </div>
+          </fieldset>
 
-          <hr className="border-stone-100" />
-
-          <div className="space-y-5">
+          {/* Extras */}
+          <section className="space-y-6 border-t border-stone-100 pt-8" aria-label="Notes and favorite">
             <div>
-              <label htmlFor="notes" className={labelClass}>Chef's Notes</label>
-              <textarea id="notes" name="notes" value={formData.notes} onChange={handleChange} rows={3} className={`${inputClass} resize-none`} placeholder="Any extra tips or tricks..." />
+              <label htmlFor="notes" className={labelClass}>
+                Chef's notes
+              </label>
+              <textarea
+                id="notes"
+                value={form.notes}
+                onChange={e => update('notes', e.target.value)}
+                rows={3}
+                maxLength={5000}
+                className={`${inputClass} resize-y`}
+                placeholder="Tips, substitutions, serving suggestions…"
+              />
             </div>
-            
-            <label htmlFor="isFavorite" className="flex items-center gap-3 cursor-pointer group w-fit">
-              <div className={`w-6 h-6 rounded border flex items-center justify-center transition-colors ${formData.isFavorite ? 'bg-accent-500 border-accent-500' : 'bg-white border-stone-300 group-hover:border-accent-500'}`}>
-                {formData.isFavorite && <div className="w-2 h-2 rounded-full bg-white" />}
-              </div>
-              <span className="font-medium text-stone-700 select-none">Mark as Favorite</span>
-              <input id="isFavorite" type="checkbox" className="sr-only" checked={formData.isFavorite} onChange={(e) => setFormData({...formData, isFavorite: e.target.checked})} />
-            </label>
-          </div>
 
-          <div className="pt-6 flex justify-end gap-3">
-            <button type="button" onClick={onCancel} disabled={loading} className="px-6 py-3 rounded-xl font-medium text-stone-500 hover:text-stone-900 hover:bg-stone-50 transition-colors">
+            <label htmlFor="isFavorite" className="group inline-flex cursor-pointer items-center gap-3">
+              <input
+                id="isFavorite"
+                type="checkbox"
+                role="switch"
+                className="peer sr-only"
+                checked={form.isFavorite}
+                onChange={e => update('isFavorite', e.target.checked)}
+              />
+              <span
+                aria-hidden="true"
+                className="relative h-7 w-12 rounded-full bg-stone-200 transition-colors after:absolute after:left-1 after:top-1 after:size-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:bg-accent-500 peer-checked:after:translate-x-5 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-600 peer-focus-visible:ring-offset-2"
+              />
+              <span className="inline-flex items-center gap-1.5 font-medium text-stone-800">
+                <HeartIcon size={18} weight={form.isFavorite ? 'fill' : 'regular'} className="text-accent-600" aria-hidden="true" />
+                Mark as favorite
+              </span>
+            </label>
+          </section>
+
+          <div className="sticky bottom-4 z-10 -mx-2 flex items-center justify-end gap-3 rounded-full border border-stone-200/80 bg-white/95 p-2 shadow-lg shadow-stone-900/5 md:static md:mx-0 md:border-0 md:bg-transparent md:p-0 md:shadow-none">
+            <button type="button" onClick={handleCancel} disabled={saving} className={buttonStyles.ghost}>
               Cancel
             </button>
-            <button type="submit" disabled={loading} className="px-8 py-3 rounded-xl font-bold bg-brand-600 text-white shadow-lg shadow-brand-500/30 hover:bg-brand-500 hover:shadow-xl hover:shadow-brand-500/40 transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
-              <FloppyDiskIcon size={20} weight="bold" />
-              {loading ? 'Saving...' : 'Save Recipe'}
+            <button type="submit" disabled={saving} className={`${buttonStyles.primary} px-7!`}>
+              {saving ? <Spinner className="size-5" /> : <FloppyDiskIcon size={20} weight="bold" aria-hidden="true" />}
+              {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Save recipe'}
             </button>
           </div>
         </form>
       </div>
     </div>
   );
-};
+}
 
-export default RecipeForm;
+/** Route component: `/recipes/new` (no id) or `/recipes/:id/edit`. */
+export default function RecipeForm({ id }: Readonly<{ id?: number }>) {
+  if (id === undefined) return <RecipeEditor />;
+  return <EditRecipeLoader id={id} />;
+}
+
+function EditRecipeLoader({ id }: Readonly<{ id: number }>) {
+  const state = useRecipe(id);
+  if (state.status === 'loading') return <PageLoader label="Loading recipe…" />;
+  if (state.status === 'error') {
+    return (
+      <div className="mx-auto max-w-xl py-12">
+        <BackLink to={paths.list()}>Back to recipes</BackLink>
+        <Notice tone="error">{state.error}</Notice>
+      </div>
+    );
+  }
+  return <RecipeEditor key={state.recipe.id} recipe={state.recipe} />;
+}

@@ -1,70 +1,59 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { expect, test, vi } from 'vitest';
+import { beforeEach, expect, test, vi } from 'vitest';
 import Login from '../../components/Login';
-import { authApi } from '../../services/api';
+import { ToastProvider } from '../../components/Toast';
 import * as AuthContext from '../../components/AuthContext';
 
-// Mock the API calls
-vi.mock('../../services/api', () => ({
-  authApi: {
-    login: vi.fn(),
-  },
-}));
+vi.mock('../../components/AuthContext', () => ({ useAuth: vi.fn() }));
 
-// Mock the Auth Context
-vi.mock('../../components/AuthContext', () => ({
-  useAuth: vi.fn(),
-}));
+const loginMock = vi.fn();
 
-test('Login form submits successfully', async () => {
-  const checkAuthMock = vi.fn();
-  (AuthContext.useAuth as any).mockReturnValue({ checkAuth: checkAuthMock });
-  
-  (authApi.login as any).mockResolvedValueOnce({ user: { id: 1, email: 'test@test.com' } });
-
-  const onSuccessMock = vi.fn();
-  
-  render(<Login onSuccess={onSuccessMock} />);
-
-  // Fill in the form
-  fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'test@example.com' } });
-  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } });
-
-  // Submit the form
-  fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
-
-  // Assert button text changes to loading state temporarily
-  expect(screen.getByRole('button', { name: 'Signing in...' })).toBeInTheDocument();
-
-  // Wait for the async actions
-  await waitFor(() => {
-    expect(authApi.login).toHaveBeenCalledWith('test@example.com', 'password123');
-    expect(checkAuthMock).toHaveBeenCalled();
-    expect(onSuccessMock).toHaveBeenCalled();
-  });
+beforeEach(() => {
+  loginMock.mockReset();
+  vi.mocked(AuthContext.useAuth).mockReturnValue({ authenticated: false, login: loginMock } as never);
 });
 
-test('Login form displays error on failure', async () => {
-  const checkAuthMock = vi.fn();
-  (AuthContext.useAuth as any).mockReturnValue({ checkAuth: checkAuthMock });
-  
-  (authApi.login as any).mockRejectedValueOnce(new Error('Invalid credentials'));
+const renderLogin = () =>
+  render(
+    <ToastProvider>
+      <Login />
+    </ToastProvider>,
+  );
 
-  const onSuccessMock = vi.fn();
-  
-  render(<Login onSuccess={onSuccessMock} />);
-
-  // Fill in the form
-  fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'wrong@example.com' } });
-  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'wrong' } });
-
-  // Submit the form
+const fillAndSubmit = (email: string, password: string) => {
+  fireEvent.change(screen.getByLabelText('Email'), { target: { value: email } });
+  fireEvent.change(screen.getByLabelText('Password'), { target: { value: password } });
   fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+};
 
-  // Wait for the error message
-  await waitFor(() => {
-    expect(screen.getByText('Invalid credentials')).toBeInTheDocument();
-    expect(onSuccessMock).not.toHaveBeenCalled();
-  });
+test('submits credentials and redirects to the requested page', async () => {
+  window.history.replaceState(null, '', '/login?next=%2Frecipes%2F3%2Fedit');
+  loginMock.mockResolvedValueOnce(undefined);
+  renderLogin();
+
+  fillAndSubmit(' test@example.com ', 'password123');
+  expect(screen.getByRole('button', { name: 'Signing in…' })).toBeDisabled();
+
+  await waitFor(() => expect(window.location.pathname).toBe('/recipes/3/edit'));
+  expect(loginMock).toHaveBeenCalledWith('test@example.com', 'password123');
 });
 
+test('ignores off-site redirect targets', async () => {
+  window.history.replaceState(null, '', '/login?next=%2F%2Fevil.example');
+  loginMock.mockResolvedValueOnce(undefined);
+  renderLogin();
+
+  fillAndSubmit('test@example.com', 'password123');
+  await waitFor(() => expect(window.location.pathname).toBe('/'));
+});
+
+test('shows the error message on failure', async () => {
+  window.history.replaceState(null, '', '/login');
+  loginMock.mockRejectedValueOnce(new Error('Invalid email or password.'));
+  renderLogin();
+
+  fillAndSubmit('wrong@example.com', 'wrong');
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('Invalid email or password.');
+  expect(window.location.pathname).toBe('/login');
+});

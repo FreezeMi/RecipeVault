@@ -1,0 +1,12 @@
+{
+  // Type-checks everything (sources, tests, seed) without emitting. `tsconfig.json` is the build config.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false
+  },
+  "include": ["src/**/*", "tests/**/*", "prisma/**/*.ts"]
+}

@@ -1,271 +1,305 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
+import { DownloadSimpleIcon, UploadSimpleIcon, ShieldCheckIcon, DatabaseIcon, UserCircleIcon } from '@phosphor-icons/react';
 import { useAuth } from './AuthContext';
-import { api } from '../services/api';
+import { useToast } from './Toast';
+import { api, authApi, toErrorMessage } from '../services/api';
+import type { DbStatus } from '../types';
+import { navigate, paths, useScrollRestoration } from '../lib/router';
+import { useDocumentTitle } from '../lib/hooks';
+import { Notice, PageHeading, Spinner, buttonStyles, cardClass, inputClass, labelClass } from './ui';
 
-interface AccountProps {
-  readonly onSuccess: () => void;
+const MIN_PASSWORD_LENGTH = 12;
+const MAX_BACKUP_BYTES = 15 * 1024 * 1024; // matches the API's upload body limit
+
+type Message = { text: string; tone: 'error' | 'success' } | null;
+
+function Section({ icon, title, description, children }: Readonly<{ icon: ReactNode; title: string; description?: string; children: ReactNode }>) {
+  return (
+    <section className={`${cardClass} p-6 md:p-8`}>
+      <div className="mb-6 flex items-start gap-4">
+        <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-brand-50 text-brand-600" aria-hidden="true">
+          {icon}
+        </span>
+        <div>
+          <h2 className="font-display text-xl font-semibold text-stone-900">{title}</h2>
+          {description && <p className="mt-1 text-sm text-stone-600">{description}</p>}
+        </div>
+      </div>
+      {children}
+    </section>
+  );
 }
 
-export default function Account({ onSuccess }: AccountProps) {
-  const { user, logout, checkAuth } = useAuth();
-  
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<{ text: string, type: 'error' | 'success' } | null>(null);
-  
-  const [dataMessage, setDataMessage] = useState<{ text: string, type: 'error' | 'success' } | null>(null);
-  const [dataLoading, setDataLoading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+const describeImport = ({ count, skipped = 0, invalid = 0 }: { count: number; skipped?: number; invalid?: number }) => {
+  const parts = [`Imported ${count} ${count === 1 ? 'recipe' : 'recipes'}.`];
+  if (skipped) parts.push(`Skipped ${skipped} already in your vault.`);
+  if (invalid) parts.push(`${invalid} invalid ${invalid === 1 ? 'entry was' : 'entries were'} ignored.`);
+  return parts.join(' ');
+};
 
-  const [dbStatus, setDbStatus] = useState<{isOkay: boolean, lastCheck: string | null} | null>(null);
+export default function Account() {
+  const { user, clearSession } = useAuth();
+  const toast = useToast();
+  useDocumentTitle('Account');
+  useScrollRestoration(true);
+
+  // --- System status ---
+  const [dbStatus, setDbStatus] = useState<DbStatus | null>(null);
+  const [dbStatusError, setDbStatusError] = useState(false);
 
   useEffect(() => {
-    api.getDbStatus()
+    const controller = new AbortController();
+    api
+      .getDbStatus(controller.signal)
       .then(setDbStatus)
-      .catch(err => console.error('Failed to fetch DB status:', err));
+      .catch(() => {
+        if (!controller.signal.aborted) setDbStatusError(true);
+      });
+    return () => controller.abort();
   }, []);
 
+  // --- Backup & restore ---
+  const [dataMessage, setDataMessage] = useState<Message>(null);
+  const [dataBusy, setDataBusy] = useState<'download' | 'upload' | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleDownloadAll = async () => {
+  const handleDownload = async () => {
+    setDataBusy('download');
+    setDataMessage(null);
     try {
-      setDataLoading(true);
-      setDataMessage(null);
       const recipes = await api.getRecipes();
-      const content = JSON.stringify(recipes, null, 2);
-      const blob = new Blob([content], { type: 'application/json' });
+      const blob = new Blob([JSON.stringify(recipes, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `recipe_vault_backup_${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      setDataMessage({ text: `Successfully downloaded ${recipes.length} recipes.`, type: 'success' });
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `recipe_vault_backup_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      // Revoke on the next tick so the download has started in every browser.
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+      setDataMessage({ text: `Downloaded a backup of ${recipes.length} ${recipes.length === 1 ? 'recipe' : 'recipes'}.`, tone: 'success' });
     } catch (err) {
-      console.error(err);
-      setDataMessage({ text: 'Failed to download recipes.', type: 'error' });
+      setDataMessage({ text: toErrorMessage(err, 'Failed to download recipes.'), tone: 'error' });
     } finally {
-      setDataLoading(false);
+      setDataBusy(null);
     }
   };
 
-  const handleUploadClick = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
-    }
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = ''; // allow choosing the same file again
     if (!file) return;
 
+    setDataMessage(null);
+    if (file.size > MAX_BACKUP_BYTES) {
+      setDataMessage({ text: 'That file is too large (maximum 15 MB).', tone: 'error' });
+      return;
+    }
+
+    setDataBusy('upload');
     try {
-      setDataLoading(true);
-      setDataMessage(null);
-      
-      const text = await file.text();
-      const recipes = JSON.parse(text);
-      
+      let recipes: unknown;
+      try {
+        recipes = JSON.parse(await file.text());
+      } catch {
+        throw new Error("That file isn't valid JSON. Choose a backup downloaded from Recipe Vault.");
+      }
       if (!Array.isArray(recipes)) {
-        throw new TypeError('Invalid JSON format: expected an array of recipes.');
+        throw new Error('This file is not a Recipe Vault backup (expected a list of recipes).');
       }
-      
-      const response = await api.uploadRecipes(recipes);
-      setDataMessage({ text: `Successfully imported ${response.count} recipes.`, type: 'success' });
-    } catch (err: any) {
-      console.error(err);
-      setDataMessage({ text: err.message || 'Failed to upload recipes.', type: 'error' });
+      const result = await api.uploadRecipes(recipes);
+      setDataMessage({ text: describeImport(result), tone: 'success' });
+    } catch (err) {
+      setDataMessage({ text: toErrorMessage(err, 'Failed to import recipes.'), tone: 'error' });
     } finally {
-      setDataLoading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+      setDataBusy(null);
     }
   };
 
-  const handleChangePassword = async (e: React.SyntheticEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setMessage(null);
-    setLoading(true);
+  // --- Password ---
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordMessage, setPasswordMessage] = useState<Message>(null);
+  const [changingPassword, setChangingPassword] = useState(false);
 
+  const handleChangePassword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setPasswordMessage(null);
+
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      setPasswordMessage({ text: `Your new password must be at least ${MIN_PASSWORD_LENGTH} characters.`, tone: 'error' });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordMessage({ text: 'The new passwords do not match.', tone: 'error' });
+      return;
+    }
+
+    setChangingPassword(true);
     try {
-      // It's a quick fetch call for change password, ideally would be in api.ts
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/auth/change-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ currentPassword, newPassword }),
-      });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to change password');
-      }
-
-      setMessage({ text: 'Password changed. Please log in again.', type: 'success' });
-      setCurrentPassword('');
-      setNewPassword('');
-      
-      // Since changing password invalidates session, we need to log out locally
-      setTimeout(() => {
-        checkAuth();
-        onSuccess();
-      }, 2000);
-      
-    } catch (err: any) {
-      setMessage({ text: err.message, type: 'error' });
-    } finally {
-      setLoading(false);
+      await authApi.changePassword(currentPassword, newPassword);
+      // The server signed out every session, including this one.
+      clearSession();
+      toast.success('Password changed. Please sign in with your new password.');
+      navigate(paths.login(), { replace: true });
+    } catch (err) {
+      setPasswordMessage({ text: toErrorMessage(err, 'Failed to change password.'), tone: 'error' });
+      setChangingPassword(false);
     }
-  };
-
-  const handleLogout = async () => {
-    await logout();
-    onSuccess();
   };
 
   if (!user) return null;
 
+  let statusDot = 'bg-stone-300';
+  let statusText = 'Checking…';
+  if (dbStatusError) {
+    statusText = 'Unavailable';
+  } else if (dbStatus && !dbStatus.lastCheck) {
+    statusText = 'Not checked yet';
+  } else if (dbStatus) {
+    statusDot = dbStatus.isOkay ? 'bg-emerald-500' : 'bg-red-500';
+    statusText = dbStatus.isOkay ? 'Healthy' : 'Issue detected';
+  }
+
   return (
-    <div className="max-w-xl mx-auto space-y-8">
-      <div className="bg-white/95 md:bg-white/60 backdrop-blur-none md:backdrop-blur-xl border border-white/40 p-8 rounded-3xl shadow-sm">
-        <h2 className="text-2xl font-bold mb-6 text-stone-800">Account</h2>
-        
-        <div className="mb-8">
-          <div className="block text-sm font-medium text-stone-500 mb-1">Email</div>
-          <div className="text-stone-900 font-medium">{user.email}</div>
-        </div>
-      </div>
+    <div className="mx-auto max-w-2xl space-y-6">
+      <PageHeading title="Account" subtitle="Manage your sign-in, backups and system health." />
 
-      <div className="bg-white/95 md:bg-white/60 backdrop-blur-none md:backdrop-blur-xl border border-white/40 p-8 rounded-3xl shadow-sm">
-        <h3 className="text-xl font-bold mb-6 text-stone-800">System Status</h3>
-        
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <div className="block text-sm font-medium text-stone-500 mb-1">Database Status</div>
-            <div className="text-stone-900 font-medium flex items-center gap-2">
-              {dbStatus ? (
-                <>
-                  <div className={`w-2.5 h-2.5 rounded-full ${dbStatus.isOkay ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                  {dbStatus.isOkay ? 'Healthy (Awake)' : 'Issue Detected'}
-                </>
-              ) : (
-                'Loading...'
-              )}
-            </div>
-          </div>
-          <div>
-            <div className="block text-sm font-medium text-stone-500 mb-1">Last DB Check</div>
-            <div className="text-stone-900 font-medium">
-              {dbStatus?.lastCheck ? new Date(dbStatus.lastCheck).toLocaleString() : 'Never'}
-            </div>
-          </div>
-        </div>
-      </div>
+      <Section icon={<UserCircleIcon size={24} weight="duotone" />} title="Profile">
+        <dl>
+          <dt className="text-sm font-medium text-stone-500">Signed in as</dt>
+          <dd className="mt-0.5 break-all font-medium text-stone-900">{user.email}</dd>
+        </dl>
+      </Section>
 
-      <div className="bg-white/95 md:bg-white/60 backdrop-blur-none md:backdrop-blur-xl border border-white/40 p-8 rounded-3xl shadow-sm">
-        <h3 className="text-xl font-bold mb-6 text-stone-800">Security</h3>
-        
-        {message && (
-          <div className={`mb-6 p-4 rounded-xl border text-sm ${
-            message.type === 'error' 
-              ? 'bg-red-50 text-red-600 border-red-100' 
-              : 'bg-green-50 text-green-700 border-green-200'
-          }`}>
-            {message.text}
+      <Section
+        icon={<DownloadSimpleIcon size={24} weight="duotone" />}
+        title="Backup & restore"
+        description="Download every recipe as a JSON file, or restore from a backup. Restoring only adds recipes — titles already in your vault are skipped, nothing is overwritten."
+      >
+        {dataMessage && (
+          <div className="mb-5">
+            <Notice tone={dataMessage.tone}>{dataMessage.text}</Notice>
           </div>
         )}
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <button type="button" onClick={handleDownload} disabled={dataBusy !== null} className={`${buttonStyles.primary} flex-1`}>
+            {dataBusy === 'download' ? <Spinner className="size-5" /> : <DownloadSimpleIcon size={20} weight="bold" aria-hidden="true" />}
+            {dataBusy === 'download' ? 'Preparing…' : 'Download backup'}
+          </button>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={dataBusy !== null}
+            className={`${buttonStyles.secondary} flex-1`}
+          >
+            {dataBusy === 'upload' ? <Spinner className="size-5" /> : <UploadSimpleIcon size={20} weight="bold" aria-hidden="true" />}
+            {dataBusy === 'upload' ? 'Importing…' : 'Restore from backup'}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,application/json"
+            onChange={handleFileChange}
+            className="hidden"
+            tabIndex={-1}
+            aria-hidden="true"
+          />
+        </div>
+      </Section>
 
+      <Section
+        icon={<ShieldCheckIcon size={24} weight="duotone" />}
+        title="Change password"
+        description="Changing your password signs you out on every device."
+      >
+        {passwordMessage && (
+          <div className="mb-5">
+            <Notice tone={passwordMessage.tone}>{passwordMessage.text}</Notice>
+          </div>
+        )}
         <form onSubmit={handleChangePassword} className="space-y-5">
+          {/* Hidden username field helps password managers attach the new password to the right account. */}
+          <input type="text" name="username" autoComplete="username" value={user.email} readOnly hidden />
           <div>
-            <label htmlFor="currentPassword" className="block text-sm font-medium text-stone-600 mb-1.5">Current Password</label>
+            <label htmlFor="currentPassword" className={labelClass}>
+              Current password
+            </label>
             <input
               id="currentPassword"
               type="password"
+              autoComplete="current-password"
               value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
+              onChange={e => setCurrentPassword(e.target.value)}
               required
-              className="w-full px-4 py-2.5 rounded-xl border border-stone-200 bg-white/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
+              className={inputClass}
             />
           </div>
-          
-          <div>
-            <label htmlFor="newPassword" className="block text-sm font-medium text-stone-600 mb-1.5">New Password</label>
-            <input
-              id="newPassword"
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              required
-              minLength={12}
-              className="w-full px-4 py-2.5 rounded-xl border border-stone-200 bg-white/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
-            />
+          <div className="grid gap-5 sm:grid-cols-2">
+            <div>
+              <label htmlFor="newPassword" className={labelClass}>
+                New password
+              </label>
+              <input
+                id="newPassword"
+                type="password"
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
+                required
+                minLength={MIN_PASSWORD_LENGTH}
+                aria-describedby="newPassword-hint"
+                className={inputClass}
+              />
+              <p id="newPassword-hint" className="mt-1.5 text-sm text-stone-500">
+                At least {MIN_PASSWORD_LENGTH} characters.
+              </p>
+            </div>
+            <div>
+              <label htmlFor="confirmPassword" className={labelClass}>
+                Confirm new password
+              </label>
+              <input
+                id="confirmPassword"
+                type="password"
+                autoComplete="new-password"
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+                required
+                className={inputClass}
+              />
+            </div>
           </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="px-6 py-2.5 bg-stone-800 text-white rounded-xl font-medium shadow-sm hover:bg-stone-900 transition-colors disabled:opacity-50"
-          >
-            {loading ? 'Changing...' : 'Change password'}
+          <button type="submit" disabled={changingPassword} className={buttonStyles.primary}>
+            {changingPassword && <Spinner className="size-5" />}
+            {changingPassword ? 'Changing…' : 'Change password'}
           </button>
         </form>
-      </div>
-      
-      <div className="bg-white/95 md:bg-white/60 backdrop-blur-none md:backdrop-blur-xl border border-white/40 p-8 rounded-3xl shadow-sm">
-        <h3 className="text-xl font-bold mb-6 text-stone-800">Data Management</h3>
-        <p className="text-sm text-stone-500 mb-6">Backup your recipes by downloading them as a JSON file, or restore them by uploading a previous backup.</p>
-        
-        {dataMessage && (
-          <div className={`mb-6 p-4 rounded-xl border text-sm ${
-            dataMessage.type === 'error' 
-              ? 'bg-red-50 text-red-600 border-red-100' 
-              : 'bg-green-50 text-green-700 border-green-200'
-          }`}>
-            {dataMessage.text}
+      </Section>
+
+      <Section
+        icon={<DatabaseIcon size={24} weight="duotone" />}
+        title="System status"
+        description="The server checks the database connection every few days."
+      >
+        <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="rounded-2xl bg-stone-50 p-4">
+            <dt className="text-sm font-medium text-stone-500">Database</dt>
+            <dd className="mt-1 flex items-center gap-2 font-semibold text-stone-900">
+              <span className={`size-2.5 rounded-full ${statusDot}`} aria-hidden="true" />
+              {statusText}
+            </dd>
           </div>
-        )}
-
-        <div className="flex flex-col sm:flex-row gap-4">
-          <button
-            type="button"
-            onClick={handleDownloadAll}
-            disabled={dataLoading}
-            className="flex-1 px-6 py-2.5 bg-brand-50 text-brand-600 border border-brand-200 rounded-xl font-medium hover:bg-brand-100 transition-colors disabled:opacity-50"
-          >
-            {dataLoading ? 'Processing...' : 'Download All Recipes'}
-          </button>
-          
-          <button
-            type="button"
-            onClick={handleUploadClick}
-            disabled={dataLoading}
-            className="flex-1 px-6 py-2.5 bg-stone-100 text-stone-700 border border-stone-200 rounded-xl font-medium hover:bg-stone-200 transition-colors disabled:opacity-50"
-          >
-            {dataLoading ? 'Processing...' : 'Upload Recipes (JSON)'}
-          </button>
-          <input 
-            type="file" 
-            accept=".json" 
-            ref={fileInputRef} 
-            onChange={handleFileChange} 
-            className="hidden" 
-          />
-        </div>
-      </div>
-
-      <div className="flex justify-center mt-12">
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="px-6 py-2.5 bg-stone-200/50 text-stone-700 rounded-xl font-medium hover:bg-stone-200 transition-colors"
-        >
-          Log out
-        </button>
-      </div>
+          <div className="rounded-2xl bg-stone-50 p-4">
+            <dt className="text-sm font-medium text-stone-500">Last check</dt>
+            <dd className="mt-1 font-semibold text-stone-900">
+              {dbStatus?.lastCheck ? new Date(dbStatus.lastCheck).toLocaleString() : '—'}
+            </dd>
+          </div>
+        </dl>
+      </Section>
     </div>
   );
 }

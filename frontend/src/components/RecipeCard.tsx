@@ -1,102 +1,110 @@
-import React from 'react';
+import { m } from 'motion/react';
+import { HeartIcon, ClockIcon, UsersIcon } from '@phosphor-icons/react';
 import type { Recipe } from '../types';
-import {HeartIcon, ClockIcon, UsersIcon} from '@phosphor-icons/react';
-import { motion } from 'motion/react';
+import { Link, paths } from '../lib/router';
+import { formatMinutes, formatServings, parseTags, totalMinutes } from '../lib/recipe';
+import RecipeImage from './RecipeImage';
 
 interface Props {
   recipe: Recipe;
-  onClick: (id: number) => void;
-  onFavorite: (e: React.MouseEvent, id: number) => void;
   index?: number;
+  /** When provided (signed-in users), the heart becomes a toggle button. */
+  onToggleFavorite?: (recipe: Recipe) => void;
+  favoritePending?: boolean;
 }
 
-const RecipeCard: React.FC<Props> = ({ recipe, onClick, onFavorite, index = 0 }) => {
+export default function RecipeCard({ recipe, index = 0, onToggleFavorite, favoritePending = false }: Readonly<Props>) {
+  const tags = parseTags(recipe.tags);
+  const minutes = totalMinutes(recipe);
+
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 30 }}
+    <m.article
+      initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay: index * 0.05, ease: [0.16, 1, 0.3, 1] }}
-      whileHover={{ y: -4, transition: { duration: 0.2 } }}
-      className="group relative bg-white/95 rounded-2xl overflow-hidden shadow-lg shadow-black/5 hover:shadow-xl hover:shadow-brand-500/20 border border-stone-200 cursor-pointer transition-shadow"
-      onClick={() => onClick(recipe.id)}
+      transition={{ duration: 0.4, delay: Math.min(index, 8) * 0.04, ease: [0.16, 1, 0.3, 1] }}
+      className="group relative flex flex-col overflow-hidden rounded-3xl border border-stone-200/80 bg-white shadow-sm shadow-stone-900/[0.03] transition-[box-shadow,translate] duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-stone-900/[0.07] has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-brand-600 has-[a:focus-visible]:ring-offset-2"
     >
-      <div className="relative h-48 overflow-hidden bg-stone-100">
-        {recipe.imageUrl ? (
-          <motion.img 
-            src={recipe.imageUrl} 
-            alt={recipe.title} 
-            className="w-full h-full object-cover"
-            whileHover={{ scale: 1.05 }}
-            transition={{ duration: 0.6, ease: "easeOut" }}
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-brand-50 to-stone-100">
-            <span className="text-stone-400 font-medium text-lg">No image</span>
-          </div>
-        )}
-        
-        {/* Tags Badge */}
-        {recipe.tags && (
-          <div className="absolute top-4 left-4 flex gap-1 flex-wrap">
-            {(() => {
-              try {
-                const parsedTags = JSON.parse(recipe.tags);
-                if (Array.isArray(parsedTags) && parsedTags.length > 0) {
-                  return (
-                    <div className="bg-white/95 md:glass px-3 py-1 rounded-full text-xs font-bold text-stone-800 shadow-sm md:backdrop-blur-md tracking-wide">
-                      {parsedTags[0]}
-                      {parsedTags.length > 1 && <span className="ml-1 opacity-70">+{parsedTags.length - 1}</span>}
-                    </div>
-                  );
-                }
-              } catch (e) { console.error(e); }
-              return null;
-            })()}
-          </div>
-        )}
-
-        {/* Favorite Button */}
-        <button type="button" 
-          className={`absolute top-4 right-4 p-2 rounded-full bg-white/95 md:glass md:backdrop-blur-md transition-all active:scale-95 shadow-sm
-            ${recipe.isFavorite ? 'text-accent-500' : 'text-stone-400 hover:text-stone-600'}`}
-          onClick={(e) => onFavorite(e, recipe.id)}
-          title={recipe.isFavorite ? "Unfavorite" : "Favorite"}
-        >
-          <HeartIcon size={20} weight={recipe.isFavorite ? "fill" : "bold"} />
-        </button>
-      </div>
-      
-      <div className="p-5">
-        <h3 className="text-lg font-bold text-stone-900 mb-2 leading-tight group-hover:text-brand-600 transition-colors">
-          {recipe.title}
-        </h3>
-        
-        {recipe.description && (
-          <p className="text-stone-500 text-sm line-clamp-2 mb-4 leading-relaxed">
-            {recipe.description}
-          </p>
-        )}
-        
-        <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-stone-500 pt-4 border-t border-stone-100">
-          {(recipe.prepTime !== null || recipe.cookTime !== null) && (
-            <div className="flex items-center gap-1.5">
-              <ClockIcon size={16} weight="duotone" className="text-brand-500" />
-              <span>
-                {((recipe.prepTime || 0) + (recipe.cookTime || 0))} min
+      <div className="relative aspect-[4/3] overflow-hidden bg-stone-100">
+        <RecipeImage
+          src={recipe.imageUrl}
+          className="size-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.04]"
+        />
+        {tags.length > 0 && (
+          <div className="absolute bottom-3 left-3 flex flex-wrap gap-1.5">
+            {tags.slice(0, 2).map(tag => (
+              <span
+                key={tag}
+                className="rounded-full bg-white/95 px-2.5 py-1 text-xs font-semibold text-stone-800 shadow-sm md:bg-white/85 md:backdrop-blur-md"
+              >
+                {tag}
               </span>
-            </div>
-          )}
-          
-          {recipe.servings !== null && (
-            <div className="flex items-center gap-1.5">
-              <UsersIcon size={16} weight="duotone" className="text-brand-500" />
-              <span>{recipe.servings} servings</span>
-            </div>
-          )}
-        </div>
+            ))}
+            {tags.length > 2 && (
+              <span
+                className="rounded-full bg-white/95 px-2 py-1 text-xs font-semibold text-stone-600 shadow-sm md:bg-white/85 md:backdrop-blur-md"
+                aria-label={`and ${tags.length - 2} more tags`}
+              >
+                +{tags.length - 2}
+              </span>
+            )}
+          </div>
+        )}
       </div>
-    </motion.div>
-  );
-};
 
-export default RecipeCard;
+      <div className="flex flex-1 flex-col p-5">
+        <h3 className="font-display text-xl font-semibold leading-snug tracking-tight text-stone-900 transition-colors group-hover:text-brand-700">
+          {/* The link is stretched over the whole card so the card is one large, keyboard-reachable target. */}
+          <Link to={paths.detail(recipe.id)} className="outline-none after:absolute after:inset-0 after:content-['']">
+            {recipe.title}
+          </Link>
+        </h3>
+
+        {recipe.description && <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-stone-600">{recipe.description}</p>}
+
+        {(minutes !== null || recipe.servings !== null) && (
+          <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 pt-4 text-sm font-medium text-stone-600">
+            {minutes !== null && minutes > 0 && (
+              <span className="inline-flex items-center gap-1.5">
+                <ClockIcon size={16} weight="duotone" className="text-brand-600" aria-hidden="true" />
+                <span className="sr-only">Total time:</span>
+                {formatMinutes(minutes)}
+              </span>
+            )}
+            {recipe.servings !== null && (
+              <span className="inline-flex items-center gap-1.5">
+                <UsersIcon size={16} weight="duotone" className="text-brand-600" aria-hidden="true" />
+                {formatServings(recipe.servings)}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {onToggleFavorite ? (
+        <button
+          type="button"
+          onClick={() => onToggleFavorite(recipe)}
+          disabled={favoritePending}
+          aria-pressed={recipe.isFavorite}
+          aria-label={recipe.isFavorite ? `Remove ${recipe.title} from favorites` : `Add ${recipe.title} to favorites`}
+          title={recipe.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+          className={`absolute right-3 top-3 z-10 grid size-10 place-items-center rounded-full bg-white/95 shadow-sm transition-[color,transform] active:scale-90 disabled:opacity-70 md:bg-white/85 md:backdrop-blur-md ${
+            recipe.isFavorite ? 'text-accent-600' : 'text-stone-500 hover:text-accent-600'
+          }`}
+        >
+          <HeartIcon size={20} weight={recipe.isFavorite ? 'fill' : 'bold'} aria-hidden="true" />
+        </button>
+      ) : (
+        recipe.isFavorite && (
+          <span
+            className="absolute right-3 top-3 grid size-10 place-items-center rounded-full bg-white/95 text-accent-600 shadow-sm md:bg-white/85 md:backdrop-blur-md"
+            title="Favorite"
+          >
+            <HeartIcon size={20} weight="fill" aria-hidden="true" />
+            <span className="sr-only">Favorite</span>
+          </span>
+        )
+      )}
+    </m.article>
+  );
+}

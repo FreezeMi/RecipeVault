@@ -1,8 +1,11 @@
 import { PrismaClient } from '@prisma/client';
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 
+// Periodically verifies database connectivity; the result is shown in the Account screen.
+// (Neon suspends idle compute and resumes it on the next query, so this is a health check, not a keep-alive.)
 const CHECK_INTERVAL = 5 * 24 * 60 * 60 * 1000; // 5 days
+const POLL_INTERVAL = 60 * 60 * 1000; // 1 hour
 const FILE_PATH = path.join(process.cwd(), '.dbcheck.json');
 
 export interface CheckStatus {
@@ -10,63 +13,60 @@ export interface CheckStatus {
   lastCheck: string | null;
 }
 
-let currentStatus: CheckStatus = {
-  isOkay: false,
-  lastCheck: null
+const loadStatus = (): CheckStatus => {
+  try {
+    const parsed: unknown = JSON.parse(fs.readFileSync(FILE_PATH, 'utf-8'));
+    const candidate = parsed as Partial<CheckStatus>;
+    if (typeof candidate?.isOkay === 'boolean' && (typeof candidate.lastCheck === 'string' || candidate.lastCheck === null)) {
+      return { isOkay: candidate.isOkay, lastCheck: candidate.lastCheck };
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      console.error('Failed to read .dbcheck.json', error);
+    }
+  }
+  return { isOkay: false, lastCheck: null };
 };
 
-// Load initial status
-if (fs.existsSync(FILE_PATH)) {
-  try {
-    const data = fs.readFileSync(FILE_PATH, 'utf-8');
-    currentStatus = JSON.parse(data);
-  } catch (e) {
-    console.error('Failed to read .dbcheck.json', e);
-  }
-}
+let currentStatus: CheckStatus = loadStatus();
 
 export const getDbStatus = (): CheckStatus => currentStatus;
 
-export const initDbCheck = (prisma: PrismaClient) => {
+/** Starts the periodic database ping. Returns a function that stops it. */
+export const initDbCheck = (prisma: PrismaClient): (() => void) => {
+  let running = false;
+
   const performCheck = async () => {
+    running = true;
     try {
-      // Execute a simple query to keep DB alive and check status
       await prisma.$queryRaw`SELECT 1`;
-      currentStatus = {
-        isOkay: true,
-        lastCheck: new Date().toISOString()
-      };
+      currentStatus = { isOkay: true, lastCheck: new Date().toISOString() };
       console.log('Database check successful');
     } catch (error) {
       console.error('Database check failed:', error);
-      currentStatus = {
-        isOkay: false,
-        lastCheck: new Date().toISOString()
-      };
+      currentStatus = { isOkay: false, lastCheck: new Date().toISOString() };
+    } finally {
+      running = false;
     }
-    
-    // Save to file
+
     try {
       fs.writeFileSync(FILE_PATH, JSON.stringify(currentStatus));
-    } catch (e) {
-      console.error('Failed to write .dbcheck.json', e);
+    } catch (error) {
+      console.error('Failed to write .dbcheck.json', error);
     }
   };
 
   const checkAndRun = () => {
-    const now = Date.now();
     const lastCheckTime = currentStatus.lastCheck ? new Date(currentStatus.lastCheck).getTime() : 0;
-    
-    if (now - lastCheckTime >= CHECK_INTERVAL) {
-      performCheck();
+    if (!running && Date.now() - lastCheckTime >= CHECK_INTERVAL) {
+      void performCheck();
     }
   };
 
-  // Run on startup
   checkAndRun();
 
-  // Then check every hour to see if 5 days have passed since last check
-  // unref() ensures this timer doesn't prevent the Node.js process from exiting (e.g. during tests)
-  const timer = setInterval(checkAndRun, 60 * 60 * 1000);
+  // unref() so the timer never keeps the process alive on its own.
+  const timer = setInterval(checkAndRun, POLL_INTERVAL);
   timer.unref();
+  return () => clearInterval(timer);
 };
