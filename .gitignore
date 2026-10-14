@@ -131,6 +131,7 @@ dist-ssr/
 
 # Agent outputs
 .agents/
+.claude/skills/
 skills-lock.json
 
 # Other files
