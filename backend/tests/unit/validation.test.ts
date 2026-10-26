@@ -61,6 +61,37 @@ test('treats plain-string ingredients as names', () => {
   ]);
 });
 
+test('keeps ingredient quantities as written so the app can scale them', () => {
+  const quantities = ['1 1/2', '½', '3-4', '2,5', '0.75', 'a pinch', ''];
+  const data = valid({
+    title: 'x',
+    ingredients: [
+      ...quantities.map(quantity => ({ quantity: `  ${quantity} `, unit: 'cups', name: 'flour' })),
+      { quantity: 2, unit: 'tbsp', name: 'oil' },
+      { quantity: '9'.repeat(LIMITS.ingredientQuantity + 5), unit: 'g', name: 'salt' },
+    ],
+  });
+  assert.deepEqual(
+    JSON.parse(data.ingredients).map((ingredient: { quantity: string }) => ingredient.quantity),
+    [...quantities, '2', '9'.repeat(LIMITS.ingredientQuantity)],
+  );
+});
+
+test('servings is a whole number from 1 to 1000, the baseline for scaling ingredients', () => {
+  assert.equal(valid({ title: 'x', servings: 1 }).servings, 1);
+  assert.equal(valid({ title: 'x', servings: LIMITS.servings }).servings, LIMITS.servings);
+  assert.equal(valid({ title: 'x', servings: ' 12 ' }).servings, 12);
+  for (const servings of [2.5, '2.5', 0, -4, LIMITS.servings + 1, true]) {
+    assert.deepEqual(
+      invalid({ title: 'x', servings }),
+      [`servings must be a whole number between 1 and ${LIMITS.servings}.`],
+      `servings: ${String(servings)}`,
+    );
+  }
+  // Restoring an old backup drops a bad serving count instead of rejecting the recipe.
+  assert.equal(valid({ title: 'x', servings: 2.5 }, 'lenient').servings, null);
+});
+
 test('requires a title', () => {
   assert.deepEqual(invalid({ title: '   ' }), ['Title is required.']);
   assert.deepEqual(invalid({}), ['Title is required.']);
