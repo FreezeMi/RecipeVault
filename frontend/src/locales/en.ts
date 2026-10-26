@@ -49,6 +49,8 @@ export const en = {
     step: (number: number) => `Step ${number}`,
     loading: 'Loading…',
   },
+  // Language names as written in this language, e.g. in "shown in Dutch".
+  languages: { en: 'English', nl: 'Dutch' },
   format: {
     minutes: (minutes: number) => `${minutes} min`,
     hours: (hours: number, minutes: number) => (minutes ? `${hours} h ${minutes} min` : `${hours} h`),
@@ -126,6 +128,7 @@ export const en = {
     reset: 'Reset',
     resetTo: (count: number) => `Reset to ${servings(count)}`,
     someUnscaled: "Some amounts couldn't be adjusted and are shown as written.",
+    notTranslated: (shownIn: string) => `This recipe isn't available in English yet, so it's shown in ${shownIn}.`,
   },
   form: {
     newTitle: 'New recipe',

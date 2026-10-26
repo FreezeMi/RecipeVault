@@ -23,6 +23,7 @@ export const nl: Messages = {
     step: number => `Stap ${number}`,
     loading: 'Laden…',
   },
+  languages: { en: 'Engels', nl: 'Nederlands' },
   format: {
     minutes: minutes => `${minutes} min`,
     hours: (hours, minutes) => (minutes ? `${hours} u ${minutes} min` : `${hours} u`),
@@ -100,6 +101,7 @@ export const nl: Messages = {
     reset: 'Herstellen',
     resetTo: count => `Herstellen naar ${servings(count)}`,
     someUnscaled: 'Sommige hoeveelheden konden niet worden omgerekend en staan er zoals in het recept.',
+    notTranslated: shownIn => `Dit recept is nog niet in het Nederlands vertaald en wordt in het ${shownIn} getoond.`,
   },
   form: {
     newTitle: 'Nieuw recept',

@@ -1,9 +1,10 @@
+import { useMemo } from 'react';
 import { m } from 'motion/react';
 import { HeartIcon, ClockIcon, UsersIcon } from '@phosphor-icons/react';
 import type { Recipe } from '../types';
 import { Link, paths } from '../lib/router';
-import { formatMinutes, parseTags, totalMinutes } from '../lib/recipe';
-import { tagLabel, useT } from '../lib/i18n';
+import { formatMinutes, localizeRecipe, parseTags, totalMinutes } from '../lib/recipe';
+import { tagLabel, useLanguage, useT } from '../lib/i18n';
 import RecipeImage from './RecipeImage';
 
 interface Props {
@@ -16,6 +17,12 @@ interface Props {
 
 export default function RecipeCard({ recipe, index = 0, onToggleFavorite, favoritePending = false }: Readonly<Props>) {
   const t = useT();
+  const language = useLanguage();
+  // Memoized: the list re-renders every card on each keystroke in the search box.
+  const localized = useMemo(() => localizeRecipe(recipe, language), [recipe, language]);
+  const { title, description } = localized.text;
+  // Untranslated text keeps its own language so screen readers pronounce it correctly.
+  const textLang = localized.isFallback ? localized.language : undefined;
   const tags = parseTags(recipe.tags);
   const minutes = totalMinutes(recipe);
 
@@ -54,14 +61,21 @@ export default function RecipeCard({ recipe, index = 0, onToggleFavorite, favori
       </div>
 
       <div className="flex flex-1 flex-col p-5">
-        <h3 className="font-display text-xl font-semibold leading-snug tracking-tight text-stone-900 transition-colors group-hover:text-brand-700">
+        <h3
+          lang={textLang}
+          className="font-display text-xl font-semibold leading-snug tracking-tight text-stone-900 transition-colors group-hover:text-brand-700"
+        >
           {/* The link is stretched over the whole card so the card is one large, keyboard-reachable target. */}
           <Link to={paths.detail(recipe.id)} className="outline-none after:absolute after:inset-0 after:content-['']">
-            {recipe.title}
+            {title}
           </Link>
         </h3>
 
-        {recipe.description && <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-stone-600">{recipe.description}</p>}
+        {description && (
+          <p lang={textLang} className="mt-2 line-clamp-2 text-sm leading-relaxed text-stone-600">
+            {description}
+          </p>
+        )}
 
         {(minutes !== null || recipe.servings !== null) && (
           <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 pt-4 text-sm font-medium text-stone-600">
@@ -88,7 +102,7 @@ export default function RecipeCard({ recipe, index = 0, onToggleFavorite, favori
           onClick={() => onToggleFavorite(recipe)}
           disabled={favoritePending}
           aria-pressed={recipe.isFavorite}
-          aria-label={recipe.isFavorite ? t.card.removeFromFavorites(recipe.title) : t.card.addToFavorites(recipe.title)}
+          aria-label={recipe.isFavorite ? t.card.removeFromFavorites(title) : t.card.addToFavorites(title)}
           title={recipe.isFavorite ? t.common.removeFromFavorites : t.common.addToFavorites}
           className={`absolute right-3 top-3 z-10 grid size-10 place-items-center rounded-full bg-white/95 shadow-sm transition-[color,transform] active:scale-90 disabled:opacity-70 md:bg-white/85 md:backdrop-blur-md ${
             recipe.isFavorite ? 'text-accent-600' : 'text-stone-500 hover:text-accent-600'

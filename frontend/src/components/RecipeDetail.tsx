@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { m } from 'motion/react';
 import {
   ClockIcon,
@@ -21,17 +21,9 @@ import RecipeImage from './RecipeImage';
 import { BackLink, Notice, PageLoader, Spinner, buttonStyles, cardClass } from './ui';
 import { Link, navigate, paths, useScrollRestoration } from '../lib/router';
 import { useDocumentTitle, useRecipe } from '../lib/hooks';
-import {
-  formatMinutes,
-  hostnameOf,
-  parseIngredients,
-  parseInstructions,
-  parseTags,
-  safeHttpUrl,
-  totalMinutes,
-} from '../lib/recipe';
+import { formatMinutes, hostnameOf, localizeRecipe, parseTags, safeHttpUrl, totalMinutes } from '../lib/recipe';
 import { scaleIngredient, servingOptions } from '../lib/servings';
-import { tagLabel, useT } from '../lib/i18n';
+import { tagLabel, useLanguage, useT } from '../lib/i18n';
 
 interface Props {
   id: number;
@@ -131,18 +123,22 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
   const { authenticated } = useAuth();
   const toast = useToast();
   const t = useT();
+  const language = useLanguage();
+  // Switching language swaps the text in place; the selected servings and other page state stay.
+  const localized = useMemo(() => state.recipe && localizeRecipe(state.recipe, language), [state.recipe, language]);
 
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [favoritePending, setFavoritePending] = useState(false);
-  const [checked, setChecked] = useState<ReadonlySet<number>>(new Set());
+  // Ticked ingredients as "language:index", because the lists of two languages need not line up.
+  const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   // null = the recipe's own serving count.
   const [selectedServings, setSelectedServings] = useState<number | null>(null);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
   const deleteButtonRef = useRef<HTMLButtonElement>(null);
   const wasConfirmingDeleteRef = useRef(false);
 
-  useDocumentTitle(state.recipe?.title);
+  useDocumentTitle(localized?.text.title);
   useScrollRestoration(status !== 'loading');
 
   // Move focus into the confirmation when it opens, and back to the Delete button when it closes.
@@ -176,16 +172,22 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
   }
 
   const { recipe } = state;
+  // Set whenever a recipe is loaded.
+  const { text, language: textLanguage, isFallback } = localized!;
+  // Untranslated text keeps its own language so screen readers pronounce it correctly.
+  const textLang = isFallback ? textLanguage : undefined;
+  const checkKey = (index: number) => `${textLanguage}:${index}`;
   const tags = parseTags(recipe.tags);
   const baseServings = recipe.servings;
   const servings = selectedServings ?? baseServings;
   const servingFactor = baseServings !== null && servings !== null ? servings / baseServings : 1;
   const isScaled = servingFactor !== 1;
   // Scaled for display only; the stored recipe keeps its original amounts.
-  const ingredients = parseIngredients(recipe.ingredients).map(ingredient => scaleIngredient(ingredient, servingFactor));
+  const ingredients = text.ingredients.map(ingredient => scaleIngredient(ingredient, servingFactor, textLanguage));
   const canScale = baseServings !== null && ingredients.some(ingredient => ingredient.scalable);
   const hasUnscaledAmounts = isScaled && ingredients.some(ingredient => !ingredient.scalable && ingredient.quantity !== '');
-  const instructions = parseInstructions(recipe.instructions);
+  const anyChecked = ingredients.some((_, index) => checked.has(checkKey(index)));
+  const instructions = text.instructions;
   const minutes = totalMinutes(recipe);
   const sourceUrl = safeHttpUrl(recipe.sourceUrl);
   const hasImage = safeHttpUrl(recipe.imageUrl) !== null;
@@ -194,7 +196,7 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
     setDeleting(true);
     try {
       await api.deleteRecipe(recipe.id);
-      toast.success(t.detail.deleted(recipe.title));
+      toast.success(t.detail.deleted(text.title));
       navigate(paths.list(), { replace: true });
     } catch (err) {
       toast.error(toErrorMessage(err, t.errors.deleteRecipe));
@@ -217,8 +219,9 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
   const toggleIngredient = (index: number) =>
     setChecked(current => {
       const next = new Set(current);
-      if (next.has(index)) next.delete(index);
-      else next.add(index);
+      const key = checkKey(index);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
 
@@ -234,6 +237,12 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
   return (
     <article className="mx-auto max-w-5xl">
       <BackLink to={paths.list()}>{t.common.backToRecipes}</BackLink>
+
+      {isFallback && (
+        <div className="mb-4">
+          <Notice tone="info">{t.detail.notTranslated(t.languages[textLanguage])}</Notice>
+        </div>
+      )}
 
       <div className={`${cardClass} overflow-hidden`}>
         {/* Hero */}
@@ -267,15 +276,16 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
               </ul>
             )}
             <h1
+              lang={textLang}
               className={`max-w-3xl font-display text-3xl font-semibold leading-tight tracking-tight md:text-5xl ${
                 hasImage ? 'text-white [text-shadow:0_2px_12px_rgb(0_0_0/0.3)]' : 'text-stone-900'
               }`}
             >
-              {recipe.title}
+              {text.title}
             </h1>
-            {recipe.description && (
-              <p className={`mt-3 max-w-2xl text-base md:text-lg ${hasImage ? 'text-white/90' : 'text-stone-600'}`}>
-                {recipe.description}
+            {text.description && (
+              <p lang={textLang} className={`mt-3 max-w-2xl text-base md:text-lg ${hasImage ? 'text-white/90' : 'text-stone-600'}`}>
+                {text.description}
               </p>
             )}
           </div>
@@ -399,7 +409,7 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
               <h2 id="ingredients-heading" className="font-display text-2xl font-semibold text-stone-900">
                 {t.common.ingredients}
               </h2>
-              {checked.size > 0 && (
+              {anyChecked && (
                 <button
                   type="button"
                   onClick={() => setChecked(new Set())}
@@ -416,9 +426,9 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
                 {canScale && baseServings !== null && (
                   <ServingsControl value={selectedServings ?? baseServings} original={baseServings} onChange={setSelectedServings} />
                 )}
-                <ul className="divide-y divide-stone-100">
+                <ul lang={textLang} className="divide-y divide-stone-100">
                   {ingredients.map((ingredient, index) => {
-                    const isChecked = checked.has(index);
+                    const isChecked = checked.has(checkKey(index));
                     const amount = [ingredient.quantity, ingredient.unit].filter(Boolean).join(' ');
                     const isAdjusted = isScaled && ingredient.scalable;
                     let amountColor = 'text-stone-900';
@@ -487,17 +497,19 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
                     </span>
                     <p className="whitespace-pre-line pt-0.5 leading-relaxed text-stone-700">
                       <span className="sr-only">{`${t.common.step(index + 1)}: `}</span>
-                      {step}
+                      <span lang={textLang}>{step}</span>
                     </p>
                   </li>
                 ))}
               </ol>
             )}
 
-            {recipe.notes && (
+            {text.notes && (
               <aside className="mt-12 rounded-2xl border border-amber-200/70 bg-amber-50/70 p-6">
                 <h3 className="mb-2 text-sm font-bold uppercase tracking-wider text-amber-900">{t.common.chefsNotes}</h3>
-                <p className="whitespace-pre-line leading-relaxed text-amber-900/90">{recipe.notes}</p>
+                <p lang={textLang} className="whitespace-pre-line leading-relaxed text-amber-900/90">
+                  {text.notes}
+                </p>
               </aside>
             )}
           </section>

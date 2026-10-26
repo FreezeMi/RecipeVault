@@ -26,6 +26,8 @@ const recipe = (id: number, overrides: Partial<Recipe> = {}): Recipe => ({
   ingredients: '[]',
   instructions: '[]',
   notes: null,
+  language: 'en',
+  translations: null,
   isFavorite: false,
   createdAt: '2024-01-01T00:00:00.000Z',
   updatedAt: '2024-01-01T00:00:00.000Z',

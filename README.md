@@ -13,7 +13,7 @@ The application allows you to create, edit, manage, and discover your personal c
 - **Smart Search:** Case-insensitive search across titles, descriptions, ingredients and tags. Filters live in the URL, so they survive refreshes and the Back button.
 - **Shareable URLs:** Every recipe has its own address (`/recipes/12`), so links, refreshes and browser navigation all work.
 - **Cooking Mode Touches:** Tick off ingredients as you go; reorder steps while editing.
-- **English & Dutch:** Switch the interface between English and Dutch from the header. The choice is remembered, and switching keeps you on the same page with your filters intact. (Recipe content itself is shown as entered.)
+- **English & Dutch:** Switch the interface between English and Dutch from the header. The choice is remembered, and switching keeps you on the same page with your filters intact. Recipes that have a translation are shown in the chosen language; the others are shown in their original language with a short note.
 - **Modern UI/UX:** Built with Tailwind CSS v4 and Framer Motion for a premium, agency-quality bright-mode aesthetic with satisfying micro-interactions.
 - **Responsive Design:** Works flawlessly on desktop and mobile browsers. Heavily optimized to disable expensive visual effects (like frosted glass) on smartphones to ensure buttery-smooth scrolling.
 - **Easy Images:** No complex file uploading required—simply paste direct image URLs or use placeholders (e.g. `https://picsum.photos/800/600`).

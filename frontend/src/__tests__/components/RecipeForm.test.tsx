@@ -27,6 +27,8 @@ const savedRecipe = (overrides: Partial<Recipe> = {}): Recipe => ({
   ingredients: '[{"quantity":"1","unit":"l","name":"stock"}]',
   instructions: '["Boil","Serve"]',
   notes: null,
+  language: 'en',
+  translations: null,
   isFavorite: false,
   createdAt: '2024-01-01T00:00:00.000Z',
   updatedAt: '2024-01-01T00:00:00.000Z',

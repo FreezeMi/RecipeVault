@@ -1,9 +1,10 @@
 import { describe, expect, test } from 'vitest';
 import { scaleIngredient, servingOptions } from '../../lib/servings';
+import type { Language } from '../../lib/i18n';
 
 /** Scales "quantity unit" and returns how it would read, e.g. scale('1/2', 'cup', 2) → "1 cup". */
-const scale = (quantity: string, unit: string, factor: number) => {
-  const scaled = scaleIngredient({ quantity, unit, name: 'x' }, factor);
+const scale = (quantity: string, unit: string, factor: number, language: Language = 'en') => {
+  const scaled = scaleIngredient({ quantity, unit, name: 'x' }, factor, language);
   return [scaled.quantity, scaled.unit].filter(Boolean).join(' ');
 };
 
@@ -20,7 +21,7 @@ describe('servingOptions', () => {
 
 describe('scaleIngredient', () => {
   test('returns the ingredient exactly as written at its own serving size', () => {
-    expect(scaleIngredient({ quantity: '0.5', unit: 'cups', name: 'milk' }, 1)).toEqual({
+    expect(scaleIngredient({ quantity: '0.5', unit: 'cups', name: 'milk' }, 1, 'en')).toEqual({
       quantity: '0.5',
       unit: 'cups',
       name: 'milk',
@@ -99,7 +100,7 @@ describe('scaleIngredient', () => {
   test.each(['a pinch', '2 large', 'to taste', '1,000', '0', '1/0', '1-1/2', '4-3', 'about 2'])(
     'leaves "%s" as written',
     quantity => {
-      expect(scaleIngredient({ quantity, unit: 'cups', name: 'x' }, 2)).toEqual({
+      expect(scaleIngredient({ quantity, unit: 'cups', name: 'x' }, 2, 'en')).toEqual({
         quantity,
         unit: 'cups',
         name: 'x',
@@ -110,12 +111,26 @@ describe('scaleIngredient', () => {
 
   test('never changes the ingredient it is given', () => {
     const stored = Object.freeze({ quantity: '2', unit: 'cups', name: 'flour' });
-    expect(scaleIngredient(stored, 3).quantity).toBe('6');
+    expect(scaleIngredient(stored, 3, 'en').quantity).toBe('6');
     expect(stored).toEqual({ quantity: '2', unit: 'cups', name: 'flour' });
   });
 
+  test('in Dutch, inflects Dutch units, keeps metric words as they are and uses a decimal comma', () => {
+    expect(scale('1', 'teentje', 2, 'nl')).toBe('2 teentjes');
+    expect(scale('2', 'teentjes', 1 / 2, 'nl')).toBe('1 teentje');
+    expect(scale('1', 'Blik', 3, 'nl')).toBe('3 Blikken');
+    expect(scale('100', 'gram', 2, 'nl')).toBe('200 gram');
+    expect(scale('1', 'liter', 3, 'nl')).toBe('3 liter');
+    expect(scale('1', 'l', 1.5, 'nl')).toBe('1,5 l');
+    expect(scale('2 tot 3', 'el', 2, 'nl')).toBe('4 tot 6 el');
+    // English words are left alone in Dutch text, and Dutch ones in English text.
+    expect(scale('1', 'cup', 2, 'nl')).toBe('2 cup');
+    expect(scale('1', 'teentje', 2, 'en')).toBe('2 teentje');
+    expect(scale('100', 'gram', 2, 'en')).toBe('200 grams');
+  });
+
   test('leaves ingredients without a quantity untouched', () => {
-    expect(scaleIngredient({ quantity: '', unit: '', name: 'salt to taste' }, 3)).toEqual({
+    expect(scaleIngredient({ quantity: '', unit: '', name: 'salt to taste' }, 3, 'en')).toEqual({
       quantity: '',
       unit: '',
       name: 'salt to taste',

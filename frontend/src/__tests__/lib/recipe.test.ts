@@ -4,9 +4,11 @@ import { nl } from '../../locales/nl';
 import {
   formatMinutes,
   hostnameOf,
+  localizeRecipe,
   parseIngredients,
   parseInstructions,
   parseTags,
+  parseTranslations,
   safeHttpUrl,
   totalMinutes,
 } from '../../lib/recipe';
@@ -28,6 +30,52 @@ describe('recipe parsing', () => {
 
   test('parseInstructions drops blank steps', () => {
     expect(parseInstructions('["Mix", "  ", "Bake"]')).toEqual(['Mix', 'Bake']);
+  });
+});
+
+describe('translations', () => {
+  const dutch = {
+    title: 'Pannenkoeken',
+    description: null,
+    ingredients: [{ quantity: '2', unit: 'kopjes', name: 'bloem' }],
+    instructions: ['Mengen'],
+    notes: 'Lekker',
+  };
+  const recipe = {
+    title: 'Pancakes',
+    description: 'Fluffy',
+    ingredients: '[{"quantity":"2","unit":"cups","name":"flour"}]',
+    instructions: '["Mix"]',
+    notes: null,
+    language: 'en' as const,
+    translations: JSON.stringify({ nl: dutch }),
+  };
+
+  test('parseTranslations skips bad JSON, unknown languages and entries without a title', () => {
+    expect(parseTranslations(null)).toEqual({});
+    expect(parseTranslations('not json')).toEqual({});
+    expect(parseTranslations('{"fr":{"title":"Crêpes"},"nl":{"title":" "}}')).toEqual({});
+    expect(parseTranslations(recipe.translations)).toEqual({ nl: dutch });
+  });
+
+  test('localizeRecipe shows the translation when there is one', () => {
+    expect(localizeRecipe(recipe, 'nl')).toEqual({ text: dutch, language: 'nl', isFallback: false });
+  });
+
+  test('otherwise it shows the original in its own language, flagged as a fallback', () => {
+    expect(localizeRecipe(recipe, 'en')).toMatchObject({ text: { title: 'Pancakes' }, language: 'en', isFallback: false });
+    expect(localizeRecipe({ ...recipe, translations: null }, 'nl')).toMatchObject({
+      text: { title: 'Pancakes', ingredients: [{ quantity: '2', unit: 'cups', name: 'flour' }] },
+      language: 'en',
+      isFallback: true,
+    });
+    // Written in Dutch, not yet in English.
+    expect(localizeRecipe({ ...recipe, language: 'nl', translations: null }, 'en')).toMatchObject({ language: 'nl', isFallback: true });
+  });
+
+  test('a translation in the recipe’s own language is ignored, and a missing language means English', () => {
+    expect(localizeRecipe({ ...recipe, language: 'nl' }, 'nl').text.title).toBe('Pancakes');
+    expect(localizeRecipe({ ...recipe, language: undefined as never }, 'nl').text.title).toBe('Pannenkoeken');
   });
 });
 
