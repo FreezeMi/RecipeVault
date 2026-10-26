@@ -26,6 +26,8 @@ model Recipe {
   ingredients  String // JSON array of { quantity, unit, name }
   instructions String // JSON array of strings
   notes        String?
+  language     String   @default("en") // language of the title, description, ingredients, instructions and notes
+  translations String? // JSON object keyed by language: { "nl": { title, description, ingredients, instructions, notes } }
   isFavorite   Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

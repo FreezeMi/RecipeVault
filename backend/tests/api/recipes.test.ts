@@ -144,6 +144,41 @@ test('Recipes API', async (t) => {
     assert.deepEqual(partial.body, []);
   });
 
+  await t.test('translations round-trip, and an update that leaves them out keeps them', async () => {
+    const nl = {
+      title: `Poffertjes ${RUN}`,
+      description: 'Kleine pannenkoekjes',
+      ingredients: [{ quantity: '250', unit: 'g', name: 'boekweitmeel' }],
+      instructions: ['Beslag maken', 'Bakken'],
+      notes: null,
+    };
+    // No tags and not a favorite, so the tag and favorite filter tests still only find the main recipe.
+    const fields = { title: `${RUN} Mini Pancakes`, tags: [] };
+    const created = await auth(request(app).post('/api/recipes')).send(recipePayload({ ...fields, language: 'en', translations: { nl } }));
+    assert.equal(created.status, 201);
+    assert.equal(created.body.language, 'en');
+    assert.deepEqual(JSON.parse(created.body.translations), { nl });
+
+    // The current form doesn't send language or translations; saving it must not wipe them.
+    const updated = await auth(request(app).put(`/api/recipes/${created.body.id}`)).send(recipePayload({ ...fields, description: 'Tiny' }));
+    assert.equal(updated.status, 200);
+    assert.equal(updated.body.description, 'Tiny');
+    assert.equal(updated.body.translations, created.body.translations);
+
+    // Recipes are found by their translated text too.
+    const search = await request(app).get('/api/recipes').query({ search: `poffertjes ${RUN}` });
+    assert.deepEqual(search.body.map((r: { id: number }) => r.id), [created.body.id]);
+
+    const cleared = await auth(request(app).put(`/api/recipes/${created.body.id}`)).send(recipePayload({ ...fields, translations: null }));
+    assert.equal(cleared.body.translations, null);
+  });
+
+  await t.test('existing and new recipes default to English without translations', async () => {
+    const res = await request(app).get(`/api/recipes/${recipeId}`);
+    assert.equal(res.body.language, 'en');
+    assert.equal(res.body.translations, null);
+  });
+
   await t.test('favorite toggles and the favorite filter follows', async () => {
     const on = await auth(request(app).patch(`/api/recipes/${recipeId}/favorite`));
     assert.equal(on.status, 200);
@@ -186,6 +221,27 @@ test('Recipes API', async (t) => {
 
     const second = await auth(request(app).post('/api/recipes/upload')).send(backup);
     assert.equal(second.body.count, 0);
+  });
+
+  await t.test('upload restores language and translations, dropping only the unusable ones', async () => {
+    const translations = JSON.stringify({ en: { title: 'Pea soup', instructions: ['Simmer'] } });
+    const backup = [
+      { title: `${RUN} Erwtensoep`, language: 'nl', translations, instructions: '["Sudderen"]' },
+      { title: `${RUN} Broken Translation`, translations: { nl: { title: '' }, fr: { title: 'Soupe' } } },
+    ];
+
+    const res = await auth(request(app).post('/api/recipes/upload')).send(backup);
+    assert.deepEqual(res.body, { success: true, count: 2, skipped: 0, invalid: 0 });
+
+    const soup = await prisma.recipe.findFirst({ where: { title: `${RUN} Erwtensoep` } });
+    assert.equal(soup?.language, 'nl');
+    assert.deepEqual(JSON.parse(soup!.translations!), {
+      en: { title: 'Pea soup', description: null, ingredients: [], instructions: ['Simmer'], notes: null },
+    });
+
+    const broken = await prisma.recipe.findFirst({ where: { title: `${RUN} Broken Translation` } });
+    assert.equal(broken?.language, 'en');
+    assert.equal(broken?.translations, null);
   });
 
   await t.test('upload accepts backups larger than the default 100kb body limit', async () => {

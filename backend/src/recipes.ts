@@ -38,6 +38,8 @@ router.get('/', async (req: Request, res: Response) => {
       { description: contains },
       { ingredients: contains },
       { tags: contains },
+      // JSON text, like ingredients, so a Dutch title or ingredient finds the recipe too.
+      { translations: contains },
     ];
   }
 
