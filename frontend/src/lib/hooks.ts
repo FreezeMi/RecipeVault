@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, toErrorMessage } from '../services/api';
 import type { Recipe } from '../types';
+import { getMessages } from './i18n';
 
 const APP_NAME = 'Recipe Vault';
 
@@ -29,10 +30,11 @@ export function useRecipe(id: number) {
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
         const notFound = error instanceof ApiError && (error.status === 404 || error.status === 400);
+        const { errors } = getMessages();
         setState({
           status: 'error',
           recipe: null,
-          error: notFound ? 'This recipe could not be found.' : toErrorMessage(error, 'Failed to load recipe.'),
+          error: notFound ? errors.recipeNotFound : toErrorMessage(error, errors.loadRecipe),
           notFound,
         });
       });

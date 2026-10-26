@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import RecipeForm from '../../components/RecipeForm';
 import { ToastProvider } from '../../components/Toast';
 import { api, ApiError } from '../../services/api';
+import { setLanguage } from '../../lib/i18n';
 import type { Recipe } from '../../types';
 
 vi.mock('../../services/api', async importOriginal => {
@@ -107,6 +108,27 @@ describe('new recipe', () => {
       notes: '',
       isFavorite: false,
     });
+  });
+});
+
+describe('in Dutch', () => {
+  test('validates in Dutch and saves tags under their English names', async () => {
+    setLanguage('nl');
+    vi.mocked(api.createRecipe).mockResolvedValueOnce(savedRecipe({ id: 42 }));
+    renderForm();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Recept opslaan' }));
+    expect(screen.getByText('Geef je recept een titel.')).toBeInTheDocument();
+    expect(screen.getByText('Voeg minstens één ingrediënt toe.')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/Titel/), { target: { value: 'Pannenkoeken' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Ontbijt' }));
+    fireEvent.change(screen.getByLabelText('Naam ingrediënt 1'), { target: { value: 'eieren' } });
+    fireEvent.change(screen.getByLabelText('Stap 1'), { target: { value: 'Kloppen' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Recept opslaan' }));
+
+    await waitFor(() => expect(api.createRecipe).toHaveBeenCalled());
+    expect(vi.mocked(api.createRecipe).mock.calls[0]![0].tags).toEqual(['Breakfast']);
   });
 });
 

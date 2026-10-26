@@ -1,4 +1,5 @@
 import type { Ingredient, Recipe } from '../types';
+import type { Messages } from './i18n';
 
 const parseArray = (json: string | null | undefined): unknown[] => {
   if (!json) return [];
@@ -34,14 +35,8 @@ export const parseInstructions = (json: string | null | undefined): string[] =>
 export const totalMinutes = (recipe: Pick<Recipe, 'prepTime' | 'cookTime'>): number | null =>
   recipe.prepTime === null && recipe.cookTime === null ? null : (recipe.prepTime ?? 0) + (recipe.cookTime ?? 0);
 
-export const formatMinutes = (minutes: number): string => {
-  if (minutes < 60) return `${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  return rest ? `${hours} h ${rest} min` : `${hours} h`;
-};
-
-export const formatServings = (servings: number) => `${servings} ${servings === 1 ? 'serving' : 'servings'}`;
+export const formatMinutes = (minutes: number, t: Messages): string =>
+  minutes < 60 ? t.format.minutes(minutes) : t.format.hours(Math.floor(minutes / 60), minutes % 60);
 
 /** Only http(s) URLs may be used as link targets or image sources (blocks `javascript:` etc.). */
 export const safeHttpUrl = (value: string | null | undefined): string | null => {

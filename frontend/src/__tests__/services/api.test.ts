@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { api, ApiError, authApi, getCachedRecipes, setUnauthorizedHandler } from '../../services/api';
+import { setLanguage } from '../../lib/i18n';
 
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -41,11 +42,36 @@ describe('api client', () => {
     setUnauthorizedHandler(handler);
     vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(jsonResponse({ error: 'Unauthorized' }, 401))));
 
-    await expect(api.deleteRecipe(1)).rejects.toThrow('Unauthorized');
+    await expect(api.deleteRecipe(1)).rejects.toThrow('Failed to delete recipe.');
     expect(handler).toHaveBeenCalledTimes(1);
 
     await expect(authApi.login('a@b.c', 'x')).rejects.toThrow();
     expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  test('only validation errors show the server message; other failures use interface text', async () => {
+    const failWith = (status: number) =>
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ error: 'Server says no' }, status)));
+
+    failWith(404);
+    await expect(api.getRecipe(1)).rejects.toThrow('Failed to load recipe.');
+    failWith(413);
+    await expect(api.uploadRecipes([])).rejects.toThrow('That is more data than the server accepts at once.');
+    failWith(429);
+    await expect(api.getRecipes()).rejects.toThrow('Too many requests, please try again later.');
+    failWith(500);
+    await expect(api.getRecipes()).rejects.toThrow('The server ran into a problem. Please try again.');
+    failWith(400);
+    await expect(api.getRecipes()).rejects.toThrow('Server says no');
+  });
+
+  test('messages follow the interface language', async () => {
+    setLanguage('nl');
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+    await expect(api.getRecipe(1)).rejects.toThrow('Kan de server niet bereiken');
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ error: 'Invalid email or password.' }, 401)));
+    await expect(authApi.login('a@b.c', 'x')).rejects.toThrow('Onjuist e-mailadres of wachtwoord.');
   });
 
   test('writes invalidate the cached recipe lists', async () => {

@@ -1,9 +1,10 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import RecipeDetail from '../../components/RecipeDetail';
 import { useAuth } from '../../components/AuthContext';
 import { ToastProvider } from '../../components/Toast';
 import { api, ApiError } from '../../services/api';
+import { setLanguage } from '../../lib/i18n';
 import type { Recipe } from '../../types';
 
 vi.mock('../../services/api', async importOriginal => {
@@ -304,4 +305,19 @@ describe('serving size', () => {
     await renderWith({ ingredients: '["2 eggs", {"quantity":"a pinch","unit":"","name":"salt"}]' });
     expect(screen.queryByRole('group', { name: 'Servings' })).not.toBeInTheDocument();
   });
+});
+
+test('switching language keeps the selected servings and checked ingredients without refetching', async () => {
+  await renderDetail();
+  fireEvent.click(screen.getByRole('button', { name: 'More servings' }));
+  fireEvent.click(screen.getAllByRole('checkbox')[0]!);
+
+  act(() => setLanguage('nl'));
+
+  expect(screen.getByRole('heading', { name: 'Ingrediënten' })).toBeInTheDocument();
+  expect(screen.getByRole('group', { name: 'Personen' })).toHaveTextContent('3 personen');
+  expect(screen.getByText('1.5 l')).toBeInTheDocument();
+  expect(screen.getAllByRole('checkbox')[0]).toBeChecked();
+  expect(screen.getByRole('button', { name: 'Herstellen naar 2 personen' })).toBeInTheDocument();
+  expect(api.getRecipe).toHaveBeenCalledTimes(1);
 });

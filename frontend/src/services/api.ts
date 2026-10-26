@@ -1,4 +1,5 @@
 import type { DbStatus, Recipe, RecipeFilters, RecipeInput, UploadResult, User } from '../types';
+import { getMessages } from '../lib/i18n';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace(/\/$/, '');
 
@@ -25,11 +26,20 @@ interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   json?: unknown;
   signal?: AbortSignal;
-  /** Fallback error message when the server doesn't provide one. */
+  /** Shown when the request fails and there's no more specific message. */
   errorMessage: string;
   /** Don't treat a 401 as an expired session (login, session probe). */
   ignoreUnauthorized?: boolean;
 }
+
+/** Interface-language messages for failures that don't depend on the request. */
+const statusMessage = (status: number): string | undefined => {
+  const { errors } = getMessages();
+  if (status === 413) return errors.tooLarge;
+  if (status === 429) return errors.tooManyRequests;
+  if (status >= 500) return errors.server;
+  return undefined;
+};
 
 async function request<T>(path: string, options: RequestOptions): Promise<T> {
   const { method = 'GET', json, signal, errorMessage, ignoreUnauthorized } = options;
@@ -45,7 +55,7 @@ async function request<T>(path: string, options: RequestOptions): Promise<T> {
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
-    throw new ApiError(0, 'Unable to reach the server. Check your connection and try again.');
+    throw new ApiError(0, getMessages().errors.network);
   }
 
   const body: unknown = await response.json().catch(() => null);
@@ -53,9 +63,12 @@ async function request<T>(path: string, options: RequestOptions): Promise<T> {
   if (!response.ok) {
     if (response.status === 401 && !ignoreUnauthorized) unauthorizedHandler?.();
     const { error, details } = (body ?? {}) as { error?: unknown; details?: unknown };
+    // The server's messages are English. They're shown only for validation errors (400), which the
+    // client can't describe on its own; every other failure gets a message in the interface language.
+    const serverMessage = response.status === 400 && typeof error === 'string' && error ? error : undefined;
     throw new ApiError(
       response.status,
-      typeof error === 'string' && error ? error : errorMessage,
+      serverMessage ?? statusMessage(response.status) ?? errorMessage,
       Array.isArray(details) ? details.filter((d): d is string => typeof d === 'string') : undefined,
     );
   }
@@ -63,7 +76,7 @@ async function request<T>(path: string, options: RequestOptions): Promise<T> {
   return body as T;
 }
 
-export const toErrorMessage = (error: unknown, fallback = 'Something went wrong.') =>
+export const toErrorMessage = (error: unknown, fallback = getMessages().errors.generic) =>
   error instanceof Error && error.message ? error.message : fallback;
 
 // Recipe lists are cached per query so that returning to the list (e.g. with Back) renders
@@ -92,38 +105,38 @@ export const api = {
     const path = key ? `/recipes?${key}` : '/recipes';
     const recipes = await request<Recipe[]>(path, {
       signal,
-      errorMessage: 'Failed to load recipes.',
+      errorMessage: getMessages().errors.loadRecipes,
     });
     listCache.set(key, recipes);
     return recipes;
   },
 
   getRecipe(id: number, signal?: AbortSignal): Promise<Recipe> {
-    return request(`/recipes/${id}`, { signal, errorMessage: 'Failed to load recipe.' });
+    return request(`/recipes/${id}`, { signal, errorMessage: getMessages().errors.loadRecipe });
   },
 
   createRecipe(data: RecipeInput): Promise<Recipe> {
-    return invalidating(request('/recipes', { method: 'POST', json: data, errorMessage: 'Failed to create recipe.' }));
+    return invalidating(request('/recipes', { method: 'POST', json: data, errorMessage: getMessages().errors.createRecipe }));
   },
 
   updateRecipe(id: number, data: RecipeInput): Promise<Recipe> {
-    return invalidating(request(`/recipes/${id}`, { method: 'PUT', json: data, errorMessage: 'Failed to update recipe.' }));
+    return invalidating(request(`/recipes/${id}`, { method: 'PUT', json: data, errorMessage: getMessages().errors.updateRecipe }));
   },
 
   deleteRecipe(id: number): Promise<{ success: boolean }> {
-    return invalidating(request(`/recipes/${id}`, { method: 'DELETE', errorMessage: 'Failed to delete recipe.' }));
+    return invalidating(request(`/recipes/${id}`, { method: 'DELETE', errorMessage: getMessages().errors.deleteRecipe }));
   },
 
   toggleFavorite(id: number): Promise<Recipe> {
-    return invalidating(request(`/recipes/${id}/favorite`, { method: 'PATCH', errorMessage: 'Failed to update favorite.' }));
+    return invalidating(request(`/recipes/${id}/favorite`, { method: 'PATCH', errorMessage: getMessages().errors.updateFavorite }));
   },
 
   uploadRecipes(recipes: unknown[]): Promise<UploadResult> {
-    return invalidating(request('/recipes/upload', { method: 'POST', json: recipes, errorMessage: 'Failed to import recipes.' }));
+    return invalidating(request('/recipes/upload', { method: 'POST', json: recipes, errorMessage: getMessages().errors.importRecipes }));
   },
 
   getDbStatus(signal?: AbortSignal): Promise<DbStatus> {
-    return request('/system/db-status', { signal, errorMessage: 'Failed to get database status.' });
+    return request('/system/db-status', { signal, errorMessage: getMessages().errors.dbStatus });
   },
 };
 
@@ -132,24 +145,24 @@ export const authApi = {
     return request('/auth/login', {
       method: 'POST',
       json: { email, password },
-      errorMessage: 'Sign in failed.',
+      errorMessage: getMessages().login.invalidCredentials,
       ignoreUnauthorized: true,
     });
   },
 
   logout(): Promise<{ success: boolean }> {
-    return request('/auth/logout', { method: 'POST', errorMessage: 'Sign out failed.', ignoreUnauthorized: true });
+    return request('/auth/logout', { method: 'POST', errorMessage: getMessages().errors.signOut, ignoreUnauthorized: true });
   },
 
   getMe(): Promise<{ authenticated: boolean; user?: User }> {
-    return request('/auth/me', { errorMessage: 'Failed to check session.', ignoreUnauthorized: true });
+    return request('/auth/me', { errorMessage: getMessages().errors.checkSession, ignoreUnauthorized: true });
   },
 
   changePassword(currentPassword: string, newPassword: string): Promise<{ success: boolean; message?: string }> {
     return request('/auth/change-password', {
       method: 'POST',
       json: { currentPassword, newPassword },
-      errorMessage: 'Failed to change password.',
+      errorMessage: getMessages().errors.changePassword,
     });
   },
 };

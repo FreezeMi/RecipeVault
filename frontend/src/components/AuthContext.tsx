@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef, type ReactNode } from 'react';
 import { authApi, setUnauthorizedHandler } from '../services/api';
 import { useToast } from './Toast';
+import { getMessages } from '../lib/i18n';
 import type { User } from '../types';
 
 interface AuthContextType {
@@ -48,7 +49,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUnauthorizedHandler(() => {
       if (userRef.current) {
         setUser(null);
-        toast.error('Your session has expired. Please sign in again.');
+        toast.error(getMessages().session.expired);
       }
     });
     return () => setUnauthorizedHandler(null);

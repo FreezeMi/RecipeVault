@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'vitest';
+import { en } from '../../locales/en';
+import { nl } from '../../locales/nl';
 import {
   formatMinutes,
-  formatServings,
   hostnameOf,
   parseIngredients,
   parseInstructions,
@@ -38,14 +39,22 @@ describe('formatting', () => {
   });
 
   test('formatMinutes uses hours past 60 minutes', () => {
-    expect(formatMinutes(45)).toBe('45 min');
-    expect(formatMinutes(60)).toBe('1 h');
-    expect(formatMinutes(95)).toBe('1 h 35 min');
+    expect(formatMinutes(45, en)).toBe('45 min');
+    expect(formatMinutes(60, en)).toBe('1 h');
+    expect(formatMinutes(95, en)).toBe('1 h 35 min');
   });
 
-  test('formatServings pluralizes', () => {
-    expect(formatServings(1)).toBe('1 serving');
-    expect(formatServings(4)).toBe('4 servings');
+  test('formatMinutes in Dutch abbreviates hours as "u"', () => {
+    expect(formatMinutes(45, nl)).toBe('45 min');
+    expect(formatMinutes(60, nl)).toBe('1 u');
+    expect(formatMinutes(95, nl)).toBe('1 u 35 min');
+  });
+
+  test('servings pluralize in both languages', () => {
+    expect(en.format.servings(1)).toBe('1 serving');
+    expect(en.format.servings(4)).toBe('4 servings');
+    expect(nl.format.servings(1)).toBe('1 persoon');
+    expect(nl.format.servings(4)).toBe('4 personen');
   });
 });
 

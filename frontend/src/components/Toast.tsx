@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AnimatePresence, m } from 'motion/react';
 import { CheckCircleIcon, WarningCircleIcon, XIcon } from '@phosphor-icons/react';
+import { useT } from '../lib/i18n';
 
 type ToastTone = 'success' | 'error';
 
@@ -22,6 +23,7 @@ const DURATION_MS = 4500;
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextId = useRef(1);
+  const t = useT();
 
   const dismiss = useCallback((id: number) => {
     setToasts(current => current.filter(toast => toast.id !== id));
@@ -71,7 +73,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 type="button"
                 onClick={() => dismiss(toast.id)}
                 className="rounded-full p-1.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700"
-                aria-label="Dismiss notification"
+                aria-label={t.toast.dismiss}
               >
                 <XIcon size={16} weight="bold" aria-hidden="true" />
               </button>

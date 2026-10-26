@@ -6,6 +6,7 @@ import { RECIPE_CATEGORIES } from '../constants';
 import { parseIngredients, parseInstructions, parseTags, safeHttpUrl } from '../lib/recipe';
 import { navigate, paths, useScrollRestoration } from '../lib/router';
 import { useDocumentTitle, useRecipe } from '../lib/hooks';
+import { tagLabel, useT, type Messages } from '../lib/i18n';
 import { useToast } from './Toast';
 import RecipeImage from './RecipeImage';
 import { BackLink, Notice, PageLoader, Spinner, buttonStyles, cardClass, inputClass, labelClass } from './ui';
@@ -80,25 +81,26 @@ const snapshot = (state: FormState) =>
 
 const parseOptionalInt = (value: string) => (value.trim() === '' ? null : Number(value));
 
-function validate(state: FormState): FieldErrors {
+function validate(state: FormState, t: Messages): FieldErrors {
+  const messages = t.form.errors;
   const errors: FieldErrors = {};
-  if (!state.title.trim()) errors.title = 'Give your recipe a title.';
+  if (!state.title.trim()) errors.title = messages.title;
 
   const checkInt = (field: 'prepTime' | 'cookTime' | 'servings', min: number, max: number, label: string) => {
     const value = parseOptionalInt(state[field]);
     if (value !== null && (!Number.isInteger(value) || value < min || value > max)) {
-      errors[field] = `${label} must be a whole number between ${min} and ${max}.`;
+      errors[field] = messages.wholeNumber(label, min, max);
     }
   };
-  checkInt('prepTime', 0, MAX_MINUTES, 'Prep time');
-  checkInt('cookTime', 0, MAX_MINUTES, 'Cook time');
-  checkInt('servings', 1, MAX_SERVINGS, 'Servings');
+  checkInt('prepTime', 0, MAX_MINUTES, messages.prepTime);
+  checkInt('cookTime', 0, MAX_MINUTES, messages.cookTime);
+  checkInt('servings', 1, MAX_SERVINGS, messages.servings);
 
-  if (state.imageUrl.trim() && !safeHttpUrl(state.imageUrl)) errors.imageUrl = 'Enter a full image link starting with https://';
-  if (state.sourceUrl.trim() && !safeHttpUrl(state.sourceUrl)) errors.sourceUrl = 'Enter a full link starting with https://';
+  if (state.imageUrl.trim() && !safeHttpUrl(state.imageUrl)) errors.imageUrl = messages.imageUrl;
+  if (state.sourceUrl.trim() && !safeHttpUrl(state.sourceUrl)) errors.sourceUrl = messages.sourceUrl;
 
-  if (!state.ingredients.some(i => i.name.trim())) errors.ingredients = 'Add at least one ingredient.';
-  if (!state.instructions.some(s => s.text.trim())) errors.instructions = 'Add at least one step.';
+  if (!state.ingredients.some(i => i.name.trim())) errors.ingredients = messages.ingredients;
+  if (!state.instructions.some(s => s.text.trim())) errors.instructions = messages.instructions;
   return errors;
 }
 
@@ -133,6 +135,7 @@ function FieldError({ id, message }: Readonly<{ id: string; message?: string }>)
 function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
   const isEdit = recipe !== undefined;
   const toast = useToast();
+  const t = useT();
   const initial = useMemo(() => toFormState(recipe), [recipe]);
   const [form, setForm] = useState<FormState>(initial);
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -141,7 +144,7 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
   const focusAfterRender = useRef<string | null>(null);
   const serverErrorRef = useRef<HTMLDivElement>(null);
 
-  useDocumentTitle(isEdit ? `Edit ${recipe.title}` : 'New recipe');
+  useDocumentTitle(isEdit ? t.form.editTitle(recipe.title) : t.form.newTitle);
   useScrollRestoration(true);
 
   const isDirty = snapshot(form) !== snapshot(initial);
@@ -172,7 +175,7 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
 
   // Predefined categories plus any custom tags the recipe already has (so they're never silently lost).
   const availableTags = useMemo(
-    () => [...RECIPE_CATEGORIES, ...initial.tags.filter(tag => !RECIPE_CATEGORIES.includes(tag))],
+    () => [...RECIPE_CATEGORIES, ...initial.tags.filter(tag => !(RECIPE_CATEGORIES as readonly string[]).includes(tag))],
     [initial.tags],
   );
 
@@ -223,14 +226,14 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
   const leave = () => navigate(isEdit ? paths.detail(recipe.id) : paths.list(), { replace: true });
 
   const handleCancel = () => {
-    if (!isDirty || window.confirm('Discard your unsaved changes?')) leave();
+    if (!isDirty || window.confirm(t.form.discardChanges)) leave();
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setServerError(null);
 
-    const fieldErrors = validate(form);
+    const fieldErrors = validate(form, t);
     setErrors(fieldErrors);
     const firstInvalid = FIELD_ORDER.find(field => fieldErrors[field]);
     if (firstInvalid) {
@@ -248,12 +251,12 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
     try {
       const payload = toPayload(form);
       const saved = isEdit ? await api.updateRecipe(recipe.id, payload) : await api.createRecipe(payload);
-      toast.success(isEdit ? 'Recipe updated.' : 'Recipe added to your vault.');
+      toast.success(isEdit ? t.form.updated : t.form.added);
       navigate(paths.detail(saved.id), { replace: true });
     } catch (err) {
       setSaving(false);
       setServerError({
-        message: toErrorMessage(err, 'Failed to save recipe.'),
+        message: toErrorMessage(err, t.form.saveFailed),
         details: err instanceof ApiError && err.details && err.details.length > 1 ? err.details : undefined,
       });
       requestAnimationFrame(() => serverErrorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
@@ -270,14 +273,14 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <BackLink to={isEdit ? paths.detail(recipe.id) : paths.list()}>{isEdit ? 'Back to recipe' : 'Back to recipes'}</BackLink>
+      <BackLink to={isEdit ? paths.detail(recipe.id) : paths.list()}>{isEdit ? t.form.backToRecipe : t.common.backToRecipes}</BackLink>
 
       <div className={`${cardClass} p-6 sm:p-8 md:p-12`}>
         <h1 className="font-display text-3xl font-semibold tracking-tight text-stone-900 md:text-4xl">
-          {isEdit ? 'Edit recipe' : 'Add a new recipe'}
+          {isEdit ? t.form.editHeading : t.form.newHeading}
         </h1>
         <p className="mt-2 text-stone-600">
-          Fields marked with <span className="text-red-600">*</span> are required.
+          {t.form.requiredNote.before} <span className="text-red-600">*</span> {t.form.requiredNote.after}
         </p>
 
         <div ref={serverErrorRef} className="mt-6 space-y-3 empty:hidden">
@@ -295,7 +298,7 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
           )}
           {errorCount > 0 && (
             <Notice tone="error">
-              Please fix {errorCount === 1 ? 'the highlighted field' : `the ${errorCount} highlighted fields`} below.
+              {t.form.fixFields(errorCount)}
             </Notice>
           )}
         </div>
@@ -304,11 +307,11 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
           {/* Basics */}
           <section className="space-y-5" aria-labelledby="basics-heading">
             <h2 id="basics-heading" className="sr-only">
-              Basics
+              {t.form.basics}
             </h2>
             <div>
               <label htmlFor="title" className={labelClass}>
-                Title <span className="text-red-600">*</span>
+                {t.form.title} <span className="text-red-600">*</span>
               </label>
               <input
                 id="title"
@@ -316,7 +319,7 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
                 value={form.title}
                 onChange={e => update('title', e.target.value)}
                 className={inputClass}
-                placeholder="e.g. Grandma's apple pie"
+                placeholder={t.form.titlePlaceholder}
                 maxLength={200}
                 autoComplete="off"
                 required
@@ -327,7 +330,7 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
 
             <div>
               <label htmlFor="description" className={labelClass}>
-                Description
+                {t.form.description}
               </label>
               <textarea
                 id="description"
@@ -336,12 +339,12 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
                 rows={3}
                 maxLength={2000}
                 className={`${inputClass} resize-y`}
-                placeholder="A short description of this dish…"
+                placeholder={t.form.descriptionPlaceholder}
               />
             </div>
 
             <fieldset>
-              <legend className={labelClass}>Tags</legend>
+              <legend className={labelClass}>{t.common.tags}</legend>
               <div className="mt-1 flex flex-wrap gap-2">
                 {availableTags.map(tag => {
                   const selected = form.tags.includes(tag);
@@ -357,7 +360,7 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
                           : 'border-stone-200 bg-white text-stone-700 hover:border-stone-300 hover:bg-stone-50'
                       }`}
                     >
-                      {tag}
+                      {tagLabel(tag, t)}
                     </button>
                   );
                 })}
@@ -367,7 +370,7 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-[1fr_auto] sm:items-start">
               <div>
                 <label htmlFor="imageUrl" className={labelClass}>
-                  Image link
+                  {t.form.imageLink}
                 </label>
                 <input
                   id="imageUrl"
@@ -381,16 +384,14 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
                 />
                 <FieldError id="imageUrl-error" message={errors.imageUrl} />
                 {!errors.imageUrl && (
-                  <p className="mt-1.5 text-sm text-stone-500">
-                    Paste a direct image address, or use https://picsum.photos/800/600 for a placeholder.
-                  </p>
+                  <p className="mt-1.5 text-sm text-stone-500">{t.form.imageHint}</p>
                 )}
               </div>
               {imagePreview && (
                 <RecipeImage
                   key={imagePreview}
                   src={imagePreview}
-                  alt="Image preview"
+                  alt={t.form.imagePreview}
                   className="h-24 w-full rounded-2xl border border-stone-200 object-cover sm:mt-7 sm:w-32"
                 />
               )}
@@ -398,7 +399,7 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
 
             <div>
               <label htmlFor="sourceUrl" className={labelClass}>
-                Original recipe link
+                {t.form.sourceLink}
               </label>
               <input
                 id="sourceUrl"
@@ -416,9 +417,9 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
             <div className="grid grid-cols-3 gap-3 sm:gap-5">
               {(
                 [
-                  ['prepTime', 'Prep (min)', '15', 0, MAX_MINUTES],
-                  ['cookTime', 'Cook (min)', '45', 0, MAX_MINUTES],
-                  ['servings', 'Servings', '4', 1, MAX_SERVINGS],
+                  ['prepTime', t.form.prepMinutes, '15', 0, MAX_MINUTES],
+                  ['cookTime', t.form.cookMinutes, '45', 0, MAX_MINUTES],
+                  ['servings', t.common.servings, '4', 1, MAX_SERVINGS],
                 ] as const
               ).map(([field, label, placeholder, min, max]) => (
                 <div key={field}>
@@ -447,13 +448,13 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
           {/* Ingredients */}
           <fieldset className="border-t border-stone-100 pt-8" aria-describedby={errors.ingredients ? 'ingredients-error' : undefined}>
             <legend className="float-left mb-4 w-full font-display text-2xl font-semibold text-stone-900">
-              Ingredients <span className="text-base text-red-600">*</span>
+              {t.common.ingredients} <span className="text-base text-red-600">*</span>
             </legend>
             <div className="clear-both space-y-3">
               <div className="hidden grid-cols-[5.5rem_6.5rem_1fr_2.5rem] gap-2 px-1 text-xs font-semibold uppercase tracking-wider text-stone-500 sm:grid">
-                <span>Qty</span>
-                <span>Unit</span>
-                <span>Ingredient</span>
+                <span>{t.form.quantity}</span>
+                <span>{t.form.unit}</span>
+                <span>{t.form.ingredient}</span>
               </div>
               {form.ingredients.map((row, index) => (
                 <div
@@ -464,7 +465,7 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
                     id={`ingredient-${row.key}-quantity`}
                     type="text"
                     placeholder={index === 0 ? '200' : undefined}
-                    aria-label={`Ingredient ${index + 1} quantity`}
+                    aria-label={t.form.ingredientQuantity(index + 1)}
                     value={row.quantity}
                     maxLength={50}
                     onChange={e => updateIngredient(row.key, 'quantity', e.target.value)}
@@ -473,7 +474,7 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
                   <input
                     type="text"
                     placeholder={index === 0 ? 'g' : undefined}
-                    aria-label={`Ingredient ${index + 1} unit`}
+                    aria-label={t.form.ingredientUnit(index + 1)}
                     value={row.unit}
                     maxLength={50}
                     onChange={e => updateIngredient(row.key, 'unit', e.target.value)}
@@ -482,8 +483,8 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
                   <input
                     id={`ingredient-${row.key}-name`}
                     type="text"
-                    placeholder={index === 0 ? 'flour' : 'Ingredient'}
-                    aria-label={`Ingredient ${index + 1} name`}
+                    placeholder={index === 0 ? t.form.namePlaceholder : t.form.ingredient}
+                    aria-label={t.form.ingredientName(index + 1)}
                     value={row.name}
                     maxLength={500}
                     onChange={e => updateIngredient(row.key, 'name', e.target.value)}
@@ -494,7 +495,7 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
                   <button
                     type="button"
                     onClick={() => removeIngredient(row.key)}
-                    aria-label={`Remove ingredient ${index + 1}`}
+                    aria-label={t.form.removeIngredient(index + 1)}
                     className={`${buttonStyles.icon} col-start-3 row-span-2 self-center hover:bg-red-50! hover:text-red-600! sm:col-start-auto sm:row-span-1`}
                   >
                     <XIcon size={18} weight="bold" aria-hidden="true" />
@@ -508,15 +509,15 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
               onClick={() => addIngredient()}
               className="mt-4 inline-flex items-center gap-1.5 rounded-full px-1 text-sm font-semibold text-brand-700 hover:text-brand-900"
             >
-              <PlusIcon size={16} weight="bold" aria-hidden="true" /> Add ingredient
+              <PlusIcon size={16} weight="bold" aria-hidden="true" /> {t.form.addIngredient}
             </button>
-            <p className="mt-1 text-xs text-stone-500">Tip: press Enter in an ingredient name to add the next one.</p>
+            <p className="mt-1 text-xs text-stone-500">{t.form.ingredientTip}</p>
           </fieldset>
 
           {/* Instructions */}
           <fieldset className="border-t border-stone-100 pt-8" aria-describedby={errors.instructions ? 'instructions-error' : undefined}>
             <legend className="float-left mb-4 w-full font-display text-2xl font-semibold text-stone-900">
-              Instructions <span className="text-base text-red-600">*</span>
+              {t.common.instructions} <span className="text-base text-red-600">*</span>
             </legend>
             <ol className="clear-both space-y-3">
               {form.instructions.map((step, index) => (
@@ -532,10 +533,10 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
                     value={step.text}
                     rows={2}
                     maxLength={5000}
-                    aria-label={`Step ${index + 1}`}
+                    aria-label={t.common.step(index + 1)}
                     aria-invalid={errors.instructions && index === 0 ? true : undefined}
                     onChange={e => updateStep(step.key, e.target.value)}
-                    placeholder="Describe this step…"
+                    placeholder={t.form.stepPlaceholder}
                     className={`${inputClass} min-h-[3.25rem] flex-1 resize-y [field-sizing:content]`}
                   />
                   <div className="flex shrink-0 flex-col">
@@ -544,7 +545,7 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
                       type="button"
                       onClick={() => moveStep(index, -1)}
                       disabled={index === 0}
-                      aria-label={`Move step ${index + 1} up`}
+                      aria-label={t.form.moveStepUp(index + 1)}
                       className={`${buttonStyles.icon} p-1.5! disabled:opacity-30`}
                     >
                       <ArrowUpIcon size={16} weight="bold" aria-hidden="true" />
@@ -554,7 +555,7 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
                       type="button"
                       onClick={() => moveStep(index, 1)}
                       disabled={index === form.instructions.length - 1}
-                      aria-label={`Move step ${index + 1} down`}
+                      aria-label={t.form.moveStepDown(index + 1)}
                       className={`${buttonStyles.icon} p-1.5! disabled:opacity-30`}
                     >
                       <ArrowDownIcon size={16} weight="bold" aria-hidden="true" />
@@ -563,7 +564,7 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
                   <button
                     type="button"
                     onClick={() => removeStep(step.key)}
-                    aria-label={`Remove step ${index + 1}`}
+                    aria-label={t.form.removeStep(index + 1)}
                     className={`${buttonStyles.icon} mt-1.5 hover:bg-red-50! hover:text-red-600!`}
                   >
                     <XIcon size={18} weight="bold" aria-hidden="true" />
@@ -577,15 +578,15 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
               onClick={addStep}
               className="mt-4 inline-flex items-center gap-1.5 rounded-full px-1 text-sm font-semibold text-brand-700 hover:text-brand-900"
             >
-              <PlusIcon size={16} weight="bold" aria-hidden="true" /> Add step
+              <PlusIcon size={16} weight="bold" aria-hidden="true" /> {t.form.addStep}
             </button>
           </fieldset>
 
           {/* Extras */}
-          <section className="space-y-6 border-t border-stone-100 pt-8" aria-label="Notes and favorite">
+          <section className="space-y-6 border-t border-stone-100 pt-8" aria-label={t.form.extras}>
             <div>
               <label htmlFor="notes" className={labelClass}>
-                Chef's notes
+                {t.common.chefsNotes}
               </label>
               <textarea
                 id="notes"
@@ -594,7 +595,7 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
                 rows={3}
                 maxLength={5000}
                 className={`${inputClass} resize-y`}
-                placeholder="Tips, substitutions, serving suggestions…"
+                placeholder={t.form.notesPlaceholder}
               />
             </div>
 
@@ -613,18 +614,18 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
               />
               <span className="inline-flex items-center gap-1.5 font-medium text-stone-800">
                 <HeartIcon size={18} weight={form.isFavorite ? 'fill' : 'regular'} className="text-accent-600" aria-hidden="true" />
-                Mark as favorite
+                {t.form.markFavorite}
               </span>
             </label>
           </section>
 
           <div className="sticky bottom-4 z-10 -mx-2 flex items-center justify-end gap-3 rounded-full border border-stone-200/80 bg-white/95 p-2 shadow-lg shadow-stone-900/5 md:static md:mx-0 md:border-0 md:bg-transparent md:p-0 md:shadow-none">
             <button type="button" onClick={handleCancel} disabled={saving} className={buttonStyles.ghost}>
-              Cancel
+              {t.common.cancel}
             </button>
             <button type="submit" disabled={saving} className={`${buttonStyles.primary} px-7!`}>
               {saving ? <Spinner className="size-5" /> : <FloppyDiskIcon size={20} weight="bold" aria-hidden="true" />}
-              {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Save recipe'}
+              {saving ? t.form.saving : isEdit ? t.form.saveChanges : t.form.saveRecipe}
             </button>
           </div>
         </form>
@@ -641,11 +642,12 @@ export default function RecipeForm({ id }: Readonly<{ id?: number }>) {
 
 function EditRecipeLoader({ id }: Readonly<{ id: number }>) {
   const state = useRecipe(id);
-  if (state.status === 'loading') return <PageLoader label="Loading recipe…" />;
+  const t = useT();
+  if (state.status === 'loading') return <PageLoader label={t.form.loading} />;
   if (state.status === 'error') {
     return (
       <div className="mx-auto max-w-xl py-12">
-        <BackLink to={paths.list()}>Back to recipes</BackLink>
+        <BackLink to={paths.list()}>{t.common.backToRecipes}</BackLink>
         <Notice tone="error">{state.error}</Notice>
       </div>
     );

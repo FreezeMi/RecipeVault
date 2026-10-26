@@ -2,7 +2,8 @@ import { m } from 'motion/react';
 import { HeartIcon, ClockIcon, UsersIcon } from '@phosphor-icons/react';
 import type { Recipe } from '../types';
 import { Link, paths } from '../lib/router';
-import { formatMinutes, formatServings, parseTags, totalMinutes } from '../lib/recipe';
+import { formatMinutes, parseTags, totalMinutes } from '../lib/recipe';
+import { tagLabel, useT } from '../lib/i18n';
 import RecipeImage from './RecipeImage';
 
 interface Props {
@@ -14,6 +15,7 @@ interface Props {
 }
 
 export default function RecipeCard({ recipe, index = 0, onToggleFavorite, favoritePending = false }: Readonly<Props>) {
+  const t = useT();
   const tags = parseTags(recipe.tags);
   const minutes = totalMinutes(recipe);
 
@@ -36,13 +38,13 @@ export default function RecipeCard({ recipe, index = 0, onToggleFavorite, favori
                 key={tag}
                 className="rounded-full bg-white/95 px-2.5 py-1 text-xs font-semibold text-stone-800 shadow-sm md:bg-white/85 md:backdrop-blur-md"
               >
-                {tag}
+                {tagLabel(tag, t)}
               </span>
             ))}
             {tags.length > 2 && (
               <span
                 className="rounded-full bg-white/95 px-2 py-1 text-xs font-semibold text-stone-600 shadow-sm md:bg-white/85 md:backdrop-blur-md"
-                aria-label={`and ${tags.length - 2} more tags`}
+                aria-label={t.card.moreTags(tags.length - 2)}
               >
                 +{tags.length - 2}
               </span>
@@ -66,14 +68,14 @@ export default function RecipeCard({ recipe, index = 0, onToggleFavorite, favori
             {minutes !== null && minutes > 0 && (
               <span className="inline-flex items-center gap-1.5">
                 <ClockIcon size={16} weight="duotone" className="text-brand-600" aria-hidden="true" />
-                <span className="sr-only">Total time:</span>
-                {formatMinutes(minutes)}
+                <span className="sr-only">{t.card.totalTime}</span>
+                {formatMinutes(minutes, t)}
               </span>
             )}
             {recipe.servings !== null && (
               <span className="inline-flex items-center gap-1.5">
                 <UsersIcon size={16} weight="duotone" className="text-brand-600" aria-hidden="true" />
-                {formatServings(recipe.servings)}
+                {t.format.servings(recipe.servings)}
               </span>
             )}
           </div>
@@ -86,8 +88,8 @@ export default function RecipeCard({ recipe, index = 0, onToggleFavorite, favori
           onClick={() => onToggleFavorite(recipe)}
           disabled={favoritePending}
           aria-pressed={recipe.isFavorite}
-          aria-label={recipe.isFavorite ? `Remove ${recipe.title} from favorites` : `Add ${recipe.title} to favorites`}
-          title={recipe.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+          aria-label={recipe.isFavorite ? t.card.removeFromFavorites(recipe.title) : t.card.addToFavorites(recipe.title)}
+          title={recipe.isFavorite ? t.common.removeFromFavorites : t.common.addToFavorites}
           className={`absolute right-3 top-3 z-10 grid size-10 place-items-center rounded-full bg-white/95 shadow-sm transition-[color,transform] active:scale-90 disabled:opacity-70 md:bg-white/85 md:backdrop-blur-md ${
             recipe.isFavorite ? 'text-accent-600' : 'text-stone-500 hover:text-accent-600'
           }`}
@@ -98,10 +100,10 @@ export default function RecipeCard({ recipe, index = 0, onToggleFavorite, favori
         recipe.isFavorite && (
           <span
             className="absolute right-3 top-3 grid size-10 place-items-center rounded-full bg-white/95 text-accent-600 shadow-sm md:bg-white/85 md:backdrop-blur-md"
-            title="Favorite"
+            title={t.common.favorite}
           >
             <HeartIcon size={20} weight="fill" aria-hidden="true" />
-            <span className="sr-only">Favorite</span>
+            <span className="sr-only">{t.common.favorite}</span>
           </span>
         )
       )}

@@ -1,6 +1,7 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
 import RecipeCard from '../../components/RecipeCard';
+import { setLanguage } from '../../lib/i18n';
 import type { Recipe } from '../../types';
 
 const mockRecipe: Recipe = {
@@ -50,6 +51,16 @@ test('signed-in users can toggle favorites', () => {
   expect(button).toHaveAttribute('aria-pressed', 'false');
   fireEvent.click(button);
   expect(onToggleFavorite).toHaveBeenCalledWith(mockRecipe);
+});
+
+test('renders in Dutch, translating known tags and keeping custom ones', () => {
+  setLanguage('nl');
+  render(<RecipeCard recipe={{ ...mockRecipe, tags: JSON.stringify(['Breakfast', 'Quick']) }} onToggleFavorite={vi.fn()} />);
+
+  expect(screen.getByText('4 personen')).toBeInTheDocument();
+  expect(screen.getByText('Ontbijt')).toBeInTheDocument();
+  expect(screen.getByText('Quick')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Test Recipe toevoegen aan favorieten' })).toBeInTheDocument();
 });
 
 test('unsafe image URLs are never rendered', () => {

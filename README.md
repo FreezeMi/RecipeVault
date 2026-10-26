@@ -13,6 +13,7 @@ The application allows you to create, edit, manage, and discover your personal c
 - **Smart Search:** Case-insensitive search across titles, descriptions, ingredients and tags. Filters live in the URL, so they survive refreshes and the Back button.
 - **Shareable URLs:** Every recipe has its own address (`/recipes/12`), so links, refreshes and browser navigation all work.
 - **Cooking Mode Touches:** Tick off ingredients as you go; reorder steps while editing.
+- **English & Dutch:** Switch the interface between English and Dutch from the header. The choice is remembered, and switching keeps you on the same page with your filters intact. (Recipe content itself is shown as entered.)
 - **Modern UI/UX:** Built with Tailwind CSS v4 and Framer Motion for a premium, agency-quality bright-mode aesthetic with satisfying micro-interactions.
 - **Responsive Design:** Works flawlessly on desktop and mobile browsers. Heavily optimized to disable expensive visual effects (like frosted glass) on smartphones to ensure buttery-smooth scrolling.
 - **Easy Images:** No complex file uploading required—simply paste direct image URLs or use placeholders (e.g. `https://picsum.photos/800/600`).
@@ -121,7 +122,10 @@ To keep the application simple and self-contained without needing cloud storage 
 **Recipe Tags**
 The tags used for classifying recipes are fully customizable. You can add, remove, or re-order the tags by editing a single array located at:
 `frontend/src/constants.ts`
-Any changes made to this file will immediately reflect in both the recipe search filters and the recipe creation form.
+Any changes made to this file will immediately reflect in both the recipe search filters and the recipe creation form. Tags are stored under these English names; give a new tag its display name in every file in `frontend/src/locales/` (the type check lists any that are missing).
+
+**Interface Languages**
+All interface text lives in `frontend/src/locales/`. `en.ts` is the reference; every other language file must have exactly the same keys, which `npm run typecheck` enforces. To add a language, create a new file next to `nl.ts`, then add its code to `LANGUAGES` and `LANGUAGE_NAMES` (and the file to `MESSAGES`) in `frontend/src/lib/i18n.ts`.
 
 ## 🧪 Testing
 
@@ -184,7 +188,8 @@ RecipeVault/
     ├── src/
     │   ├── __tests__/       # Frontend component tests
     │   ├── components/      # React components (screens + shared UI)
-    │   ├── lib/             # Router, hooks, recipe helpers
+    │   ├── lib/             # Router, language store, hooks, recipe helpers
+    │   ├── locales/         # Interface text per language (en.ts is the reference)
     │   ├── services/        # API client
     │   ├── types/           # TypeScript interfaces
     │   ├── App.tsx          # Main application router/shell

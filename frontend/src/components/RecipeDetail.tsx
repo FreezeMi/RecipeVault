@@ -23,7 +23,6 @@ import { Link, navigate, paths, useScrollRestoration } from '../lib/router';
 import { useDocumentTitle, useRecipe } from '../lib/hooks';
 import {
   formatMinutes,
-  formatServings,
   hostnameOf,
   parseIngredients,
   parseInstructions,
@@ -32,6 +31,7 @@ import {
   totalMinutes,
 } from '../lib/recipe';
 import { scaleIngredient, servingOptions } from '../lib/servings';
+import { tagLabel, useT } from '../lib/i18n';
 
 interface Props {
   id: number;
@@ -59,6 +59,7 @@ function ServingsControl({
   original,
   onChange,
 }: Readonly<{ value: number; original: number; onChange: (servings: number) => void }>) {
+  const t = useT();
   const options = servingOptions(original);
   const index = options.indexOf(value);
   const fewer: number | undefined = options[index - 1];
@@ -72,7 +73,7 @@ function ServingsControl({
     <div className="mb-3 rounded-2xl border border-stone-200/80 bg-stone-50/60 px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <span id="servings-label" className="font-semibold text-stone-900">
-          Servings
+          {t.common.servings}
         </span>
         <div
           role="group"
@@ -83,20 +84,20 @@ function ServingsControl({
             type="button"
             onClick={() => step(fewer)}
             aria-disabled={fewer === undefined}
-            aria-label="Fewer servings"
+            aria-label={t.detail.fewerServings}
             className={stepButtonClass}
           >
             <MinusIcon size={16} weight="bold" aria-hidden="true" />
           </button>
           <output aria-live="polite" className="min-w-7 text-center text-lg font-semibold tabular-nums text-stone-900">
             {value}
-            <span className="sr-only">{value === 1 ? ' serving' : ' servings'}</span>
+            <span className="sr-only">{` ${t.format.servingsWord(value)}`}</span>
           </output>
           <button
             type="button"
             onClick={() => step(more)}
             aria-disabled={more === undefined}
-            aria-label="More servings"
+            aria-label={t.detail.moreServings}
             className={stepButtonClass}
           >
             <PlusIcon size={16} weight="bold" aria-hidden="true" />
@@ -105,17 +106,17 @@ function ServingsControl({
       </div>
       <p className="mt-1 text-sm text-stone-500">
         {value === original ? (
-          'As written in the recipe'
+          t.detail.asWritten
         ) : (
           <>
-            Scaled from {original} ·{' '}
+            {t.detail.scaledFrom(original)} ·{' '}
             <button
               type="button"
               onClick={() => onChange(original)}
-              aria-label={`Reset to ${formatServings(original)}`}
+              aria-label={t.detail.resetTo(original)}
               className="font-semibold text-brand-700 hover:text-brand-900"
             >
-              Reset
+              {t.detail.reset}
             </button>
           </>
         )}
@@ -129,6 +130,7 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
   const { status, reload, setRecipe } = state;
   const { authenticated } = useAuth();
   const toast = useToast();
+  const t = useT();
 
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -150,19 +152,19 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
     wasConfirmingDeleteRef.current = confirmingDelete;
   }, [confirmingDelete]);
 
-  if (state.status === 'loading') return <PageLoader label="Opening recipe…" />;
+  if (state.status === 'loading') return <PageLoader label={t.detail.opening} />;
 
   if (state.status === 'error') {
     return (
       <div className="mx-auto max-w-xl py-12">
-        <BackLink to={paths.list()}>Back to recipes</BackLink>
+        <BackLink to={paths.list()}>{t.common.backToRecipes}</BackLink>
         <Notice
           tone="error"
           action={
             !state.notFound && (
               <button type="button" onClick={reload} className="inline-flex items-center gap-1.5 font-semibold">
                 <ArrowClockwiseIcon size={16} weight="bold" aria-hidden="true" />
-                Retry
+                {t.common.retry}
               </button>
             )
           }
@@ -192,10 +194,10 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
     setDeleting(true);
     try {
       await api.deleteRecipe(recipe.id);
-      toast.success(`“${recipe.title}” was deleted.`);
+      toast.success(t.detail.deleted(recipe.title));
       navigate(paths.list(), { replace: true });
     } catch (err) {
-      toast.error(toErrorMessage(err, 'Failed to delete recipe.'));
+      toast.error(toErrorMessage(err, t.errors.deleteRecipe));
       setDeleting(false);
       setConfirmingDelete(false);
     }
@@ -206,7 +208,7 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
     try {
       setRecipe(await api.toggleFavorite(recipe.id));
     } catch (err) {
-      toast.error(toErrorMessage(err, 'Failed to update favorite.'));
+      toast.error(toErrorMessage(err, t.errors.updateFavorite));
     } finally {
       setFavoritePending(false);
     }
@@ -221,17 +223,17 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
     });
 
   const stats = [
-    recipe.prepTime !== null && { label: 'Prep', value: formatMinutes(recipe.prepTime), icon: <TimerIcon size={20} weight="duotone" /> },
-    recipe.cookTime !== null && { label: 'Cook', value: formatMinutes(recipe.cookTime), icon: <FireIcon size={20} weight="duotone" /> },
+    recipe.prepTime !== null && { label: t.detail.prep, value: formatMinutes(recipe.prepTime, t), icon: <TimerIcon size={20} weight="duotone" /> },
+    recipe.cookTime !== null && { label: t.detail.cook, value: formatMinutes(recipe.cookTime, t), icon: <FireIcon size={20} weight="duotone" /> },
     minutes !== null &&
       recipe.prepTime !== null &&
-      recipe.cookTime !== null && { label: 'Total', value: formatMinutes(minutes), icon: <ClockIcon size={20} weight="duotone" /> },
-    recipe.servings !== null && { label: 'Yield', value: formatServings(recipe.servings), icon: <UsersIcon size={20} weight="duotone" /> },
+      recipe.cookTime !== null && { label: t.detail.total, value: formatMinutes(minutes, t), icon: <ClockIcon size={20} weight="duotone" /> },
+    recipe.servings !== null && { label: t.detail.yield, value: t.format.servings(recipe.servings), icon: <UsersIcon size={20} weight="duotone" /> },
   ].filter(Boolean) as { label: string; value: string; icon: ReactNode }[];
 
   return (
     <article className="mx-auto max-w-5xl">
-      <BackLink to={paths.list()}>Back to recipes</BackLink>
+      <BackLink to={paths.list()}>{t.common.backToRecipes}</BackLink>
 
       <div className={`${cardClass} overflow-hidden`}>
         {/* Hero */}
@@ -247,7 +249,7 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
 
           <div className={`p-6 md:p-10 ${hasImage ? 'absolute inset-x-0 bottom-0 text-white' : '-mt-10'}`}>
             {tags.length > 0 && (
-              <ul className="mb-3 flex flex-wrap gap-2" aria-label="Tags">
+              <ul className="mb-3 flex flex-wrap gap-2" aria-label={t.common.tags}>
                 {tags.map(tag => (
                   <li key={tag}>
                     <Link
@@ -258,7 +260,7 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
                           : 'bg-brand-50 text-brand-700 hover:bg-brand-100'
                       }`}
                     >
-                      {tag}
+                      {tagLabel(tag, t)}
                     </Link>
                   </li>
                 ))}
@@ -288,7 +290,7 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
               ))}
               {sourceUrl && (
                 <div>
-                  <dt className="sr-only">Source</dt>
+                  <dt className="sr-only">{t.detail.source}</dt>
                   <dd>
                     <a
                       href={sourceUrl}
@@ -296,9 +298,9 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-white px-3.5 py-2 text-sm font-semibold text-brand-700 transition-colors hover:border-brand-300 hover:bg-brand-50"
                     >
-                      Original at {hostnameOf(sourceUrl)}
+                      {t.detail.originalAt(hostnameOf(sourceUrl))}
                       <ArrowSquareOutIcon size={16} weight="bold" aria-hidden="true" />
-                      <span className="sr-only">(opens in a new tab)</span>
+                      <span className="sr-only">{t.detail.opensInNewTab}</span>
                     </a>
                   </dd>
                 </div>
@@ -327,10 +329,10 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
                   </span>
                   <div className="pt-0.5">
                     <p id="confirm-delete-title" className="font-semibold text-red-900">
-                      Delete this recipe?
+                      {t.detail.confirmDelete}
                     </p>
                     <p id="confirm-delete-description" className="mt-0.5 text-sm leading-relaxed text-red-800">
-                      It will be permanently removed from your vault. This can't be undone.
+                      {t.detail.confirmDeleteText}
                     </p>
                   </div>
                 </div>
@@ -342,7 +344,7 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
                     disabled={deleting}
                     className={`${buttonStyles.secondary} flex-1 sm:flex-none`}
                   >
-                    Cancel
+                    {t.common.cancel}
                   </button>
                   <button
                     type="button"
@@ -351,7 +353,7 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
                     className={`${buttonStyles.danger} flex-1 sm:flex-none`}
                   >
                     {deleting ? <Spinner className="size-4.5" /> : <TrashIcon size={18} weight="bold" aria-hidden="true" />}
-                    {deleting ? 'Deleting…' : 'Delete'}
+                    {deleting ? t.detail.deleting : t.detail.delete}
                   </button>
                 </div>
               </m.div>
@@ -365,11 +367,11 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
                   className={`${buttonStyles.secondary} ${recipe.isFavorite ? 'border-accent-200! bg-accent-50! text-accent-700!' : ''}`}
                 >
                   <HeartIcon size={18} weight={recipe.isFavorite ? 'fill' : 'bold'} aria-hidden="true" />
-                  {recipe.isFavorite ? 'Favorite' : 'Add to favorites'}
+                  {recipe.isFavorite ? t.common.favorite : t.common.addToFavorites}
                 </button>
                 <Link to={paths.edit(recipe.id)} className={buttonStyles.secondary}>
                   <PencilSimpleIcon size={18} weight="bold" aria-hidden="true" />
-                  Edit
+                  {t.detail.edit}
                 </Link>
                 <button
                   ref={deleteButtonRef}
@@ -378,14 +380,14 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
                   className={`${buttonStyles.secondary} hover:border-red-200! hover:bg-red-50! hover:text-red-700!`}
                 >
                   <TrashIcon size={18} weight="bold" aria-hidden="true" />
-                  Delete
+                  {t.detail.delete}
                 </button>
               </div>
             ))}
 
           {!authenticated && recipe.isFavorite && (
             <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent-700">
-              <HeartIcon size={18} weight="fill" aria-hidden="true" /> Favorite
+              <HeartIcon size={18} weight="fill" aria-hidden="true" /> {t.common.favorite}
             </span>
           )}
         </div>
@@ -395,7 +397,7 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
           <section className="md:col-span-5 lg:col-span-4" aria-labelledby="ingredients-heading">
             <div className="mb-5 flex items-baseline justify-between gap-4">
               <h2 id="ingredients-heading" className="font-display text-2xl font-semibold text-stone-900">
-                Ingredients
+                {t.common.ingredients}
               </h2>
               {checked.size > 0 && (
                 <button
@@ -403,12 +405,12 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
                   onClick={() => setChecked(new Set())}
                   className="text-sm font-medium text-brand-700 hover:text-brand-900"
                 >
-                  Reset
+                  {t.detail.clearChecked}
                 </button>
               )}
             </div>
             {ingredients.length === 0 ? (
-              <p className="text-stone-500">No ingredients listed.</p>
+              <p className="text-stone-500">{t.detail.noIngredients}</p>
             ) : (
               <>
                 {canScale && baseServings !== null && (
@@ -461,7 +463,7 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
                   })}
                 </ul>
                 {hasUnscaledAmounts && (
-                  <p className="mt-3 text-sm text-stone-500">Some amounts couldn't be adjusted and are shown as written.</p>
+                  <p className="mt-3 text-sm text-stone-500">{t.detail.someUnscaled}</p>
                 )}
               </>
             )}
@@ -469,10 +471,10 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
 
           <section className="md:col-span-7 lg:col-span-8" aria-labelledby="instructions-heading">
             <h2 id="instructions-heading" className="mb-5 font-display text-2xl font-semibold text-stone-900">
-              Instructions
+              {t.common.instructions}
             </h2>
             {instructions.length === 0 ? (
-              <p className="text-stone-500">No instructions listed.</p>
+              <p className="text-stone-500">{t.detail.noInstructions}</p>
             ) : (
               <ol className="space-y-6">
                 {instructions.map((step, index) => (
@@ -484,7 +486,7 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
                       {index + 1}
                     </span>
                     <p className="whitespace-pre-line pt-0.5 leading-relaxed text-stone-700">
-                      <span className="sr-only">Step {index + 1}: </span>
+                      <span className="sr-only">{`${t.common.step(index + 1)}: `}</span>
                       {step}
                     </p>
                   </li>
@@ -494,7 +496,7 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
 
             {recipe.notes && (
               <aside className="mt-12 rounded-2xl border border-amber-200/70 bg-amber-50/70 p-6">
-                <h3 className="mb-2 text-sm font-bold uppercase tracking-wider text-amber-900">Chef's notes</h3>
+                <h3 className="mb-2 text-sm font-bold uppercase tracking-wider text-amber-900">{t.common.chefsNotes}</h3>
                 <p className="whitespace-pre-line leading-relaxed text-amber-900/90">{recipe.notes}</p>
               </aside>
             )}
