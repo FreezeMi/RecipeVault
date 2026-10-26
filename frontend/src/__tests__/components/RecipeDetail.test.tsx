@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import RecipeDetail from '../../components/RecipeDetail';
+import { useAuth } from '../../components/AuthContext';
 import { ToastProvider } from '../../components/Toast';
 import { api, ApiError } from '../../services/api';
 import type { Recipe } from '../../types';
@@ -13,9 +14,10 @@ vi.mock('../../services/api', async importOriginal => {
   };
 });
 
-vi.mock('../../components/AuthContext', () => ({
-  useAuth: () => ({ authenticated: true }),
-}));
+vi.mock('../../components/AuthContext', () => ({ useAuth: vi.fn() }));
+
+const signedIn = (authenticated: boolean) =>
+  vi.mocked(useAuth).mockReturnValue({ authenticated } as ReturnType<typeof useAuth>);
 
 const recipe: Recipe = {
   id: 7,
@@ -52,7 +54,58 @@ const openConfirmation = () => {
 beforeEach(() => {
   vi.mocked(api.getRecipe).mockReset().mockResolvedValue(recipe);
   vi.mocked(api.deleteRecipe).mockReset();
+  vi.mocked(api.toggleFavorite).mockReset();
+  signedIn(true);
   window.history.replaceState(null, '', '/recipes/7');
+});
+
+describe('loading and errors', () => {
+  const renderPage = () =>
+    render(
+      <ToastProvider>
+        <RecipeDetail id={7} />
+      </ToastProvider>,
+    );
+
+  test('shows a loader until the recipe arrives', async () => {
+    let resolve!: (value: Recipe) => void;
+    vi.mocked(api.getRecipe).mockReturnValueOnce(new Promise(r => (resolve = r)));
+    renderPage();
+
+    expect(screen.getByText('Opening recipe…')).toBeInTheDocument();
+    resolve(recipe);
+    expect(await screen.findByRole('heading', { name: 'Soup' })).toBeInTheDocument();
+    expect(screen.queryByText('Opening recipe…')).not.toBeInTheDocument();
+  });
+
+  test('a missing recipe says so without offering a retry', async () => {
+    vi.mocked(api.getRecipe).mockRejectedValueOnce(new ApiError(404, 'Recipe not found'));
+    renderPage();
+
+    expect(await screen.findByText('This recipe could not be found.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Back to recipes' })).toHaveAttribute('href', '/');
+  });
+
+  test('other failures show the error and can be retried', async () => {
+    vi.mocked(api.getRecipe).mockRejectedValueOnce(new ApiError(500, 'Server unavailable.'));
+    renderPage();
+
+    expect(await screen.findByText('Server unavailable.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByRole('heading', { name: 'Soup' })).toBeInTheDocument();
+    expect(api.getRecipe).toHaveBeenCalledTimes(2);
+  });
+});
+
+test('visitors can change the serving size but get no edit or delete actions', async () => {
+  signedIn(false);
+  await renderDetail();
+
+  expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Edit' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'More servings' }));
+  expect(screen.getByText('1.5 l')).toBeInTheDocument();
 });
 
 describe('delete confirmation', () => {
@@ -81,6 +134,18 @@ describe('delete confirmation', () => {
 
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
     expect(api.deleteRecipe).not.toHaveBeenCalled();
+  });
+
+  test('while deleting, both buttons are disabled and Escape is ignored', async () => {
+    vi.mocked(api.deleteRecipe).mockReturnValueOnce(new Promise(() => {}));
+    await renderDetail();
+    const dialog = openConfirmation();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    expect(screen.getByRole('button', { name: 'Deleting…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument();
   });
 
   test('Delete removes the recipe and returns to the list', async () => {
@@ -144,6 +209,46 @@ describe('serving size', () => {
     expect(screen.getByText('salt to taste')).toBeInTheDocument();
     expect(screen.getByText(/Scaled from 2/)).toBeInTheDocument();
     expect(screen.getByText("Some amounts couldn't be adjusted and are shown as written.")).toBeInTheDocument();
+  });
+
+  test('highlights adjusted amounts but not the ones shown as written', async () => {
+    await renderWith();
+    expect(screen.getByText('1 l')).not.toHaveClass('text-brand-700');
+
+    more();
+    expect(screen.getByText('1.5 l')).toHaveClass('text-brand-700');
+    expect(screen.getByText('a pinch')).not.toHaveClass('text-brand-700');
+  });
+
+  test('changing the serving size never calls the API', async () => {
+    await renderWith();
+    more();
+    fewer();
+    fewer();
+
+    expect(api.getRecipe).toHaveBeenCalledTimes(1);
+    expect(api.toggleFavorite).not.toHaveBeenCalled();
+    expect(api.deleteRecipe).not.toHaveBeenCalled();
+  });
+
+  test('checked ingredients stay checked when the serving size changes', async () => {
+    await renderWith();
+    fireEvent.click(screen.getAllByRole('checkbox')[0]!);
+    more();
+
+    expect(screen.getAllByRole('checkbox')[0]).toBeChecked();
+    expect(screen.getByText('1.5 l')).toBeInTheDocument();
+  });
+
+  test('the selected serving size survives toggling favorite', async () => {
+    vi.mocked(api.toggleFavorite).mockResolvedValueOnce({ ...soup, isFavorite: true });
+    await renderWith();
+    more();
+    fireEvent.click(screen.getByRole('button', { name: 'Add to favorites' }));
+
+    expect(await screen.findByRole('button', { name: 'Favorite' })).toHaveAttribute('aria-pressed', 'true');
+    expect(selector()).toHaveTextContent('3 servings');
+    expect(screen.getByText('1.5 l')).toBeInTheDocument();
   });
 
   test('stops at 1 serving', async () => {

@@ -75,6 +75,36 @@ test('Recipes API', async (t) => {
     assert.equal(nan.status, 400);
   });
 
+  await t.test('POST rejects a fractional or out-of-range serving count', async () => {
+    for (const servings of [2.5, 0, 1001]) {
+      const res = await auth(request(app).post('/api/recipes')).send(recipePayload({ servings }));
+      assert.equal(res.status, 400, `servings: ${servings}`);
+      assert.equal(res.body.error, 'servings must be a whole number between 1 and 1000.');
+    }
+  });
+
+  await t.test('ingredient quantities round-trip exactly, and reading a recipe never changes it', async () => {
+    const ingredients = [
+      { quantity: '1 1/2', unit: 'cups', name: 'flour' },
+      { quantity: '½', unit: 'tsp', name: 'salt' },
+      { quantity: '3-4', unit: 'tbsp', name: 'oil' },
+      { quantity: '2,5', unit: 'dl', name: 'milk' },
+      { quantity: 'a pinch', unit: '', name: 'nutmeg' },
+      { quantity: '', unit: '', name: 'butter for frying' },
+    ];
+    // No tags, so the tag-filter test below still only finds the main recipe.
+    const created = await auth(request(app).post('/api/recipes')).send(
+      recipePayload({ title: `${RUN} Crepes`, tags: [], servings: 6, ingredients }),
+    );
+    assert.equal(created.status, 201);
+
+    const first = await request(app).get(`/api/recipes/${created.body.id}`);
+    const second = await request(app).get(`/api/recipes/${created.body.id}`);
+    assert.deepEqual(JSON.parse(first.body.ingredients), ingredients);
+    assert.equal(first.body.servings, 6);
+    assert.equal(second.body.updatedAt, created.body.updatedAt);
+  });
+
   await t.test('GET /:id returns the recipe; bad or unknown ids are handled', async () => {
     const res = await request(app).get(`/api/recipes/${recipeId}`);
     assert.equal(res.status, 200);
@@ -205,10 +235,21 @@ test('Recipes API', async (t) => {
     assert.equal(typeof res.body.isOkay, 'boolean');
   });
 
-  await t.test('DELETE removes the recipe', async () => {
+  await t.test('DELETE with a malformed id returns 400', async () => {
+    const res = await auth(request(app).delete('/api/recipes/abc'));
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error, 'Invalid recipe id');
+  });
+
+  await t.test('DELETE removes the recipe and leaves the others alone', async () => {
+    const ownRecipes = () => prisma.recipe.count({ where: { title: { startsWith: RUN } } });
+    const before = await ownRecipes();
+
     const res = await auth(request(app).delete(`/api/recipes/${recipeId}`));
     assert.equal(res.status, 200);
+    assert.deepEqual(res.body, { success: true });
     assert.equal((await request(app).get(`/api/recipes/${recipeId}`)).status, 404);
+    assert.equal(await ownRecipes(), before - 1);
   });
 
   await t.test('unknown API routes return JSON 404', async () => {

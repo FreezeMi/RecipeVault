@@ -10,6 +10,7 @@ const scale = (quantity: string, unit: string, factor: number) => {
 describe('servingOptions', () => {
   test('offers 1–12', () => {
     expect(servingOptions(4)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    expect(servingOptions(12)).toEqual(servingOptions(1));
   });
 
   test("keeps a larger recipe yield selectable so it can be shown as written", () => {
@@ -44,6 +45,21 @@ describe('scaleIngredient', () => {
   test('keeps a decimal comma', () => {
     expect(scale('1,5', 'l', 1 / 2)).toBe('0,75 l');
     expect(scale('2,5', 'dl', 2)).toBe('5 dl');
+    expect(scale('1,5-2', 'l', 1 / 2)).toBe('0,75-1 l');
+  });
+
+  test('rounds amounts of 100 or more to whole numbers, whatever the unit', () => {
+    expect(scale('455', '', 1 / 4)).toBe('114');
+  });
+
+  test('shows tiny amounts instead of rounding them to zero', () => {
+    expect(scale('0.1', 'tsp', 1 / 12)).toBe('0.01 tsp');
+    expect(scale('1', 'g', 1 / 1000)).toBe('0.001 g');
+  });
+
+  test('normalizes spacing and the unicode fraction slash', () => {
+    expect(scale(' 1  1/2 ', 'cups', 2)).toBe('3 cups');
+    expect(scale('1⁄2', 'cup', 2)).toBe('1 cup');
   });
 
   test('reads fractions, mixed numbers and unicode fractions', () => {
@@ -64,11 +80,18 @@ describe('scaleIngredient', () => {
     expect(scale('3-4', 'tbsp', 2)).toBe('6-8 tbsp');
     expect(scale('1 to 2', 'cups', 1 / 2)).toBe('½ to 1 cup');
     expect(scale('2 – 3', '', 2)).toBe('4 – 6');
+    expect(scale('1 TO 2', 'cups', 2)).toBe('2 TO 4 cups');
+  });
+
+  test('shows a range that rounds to one amount as that amount', () => {
+    expect(scale('100-100.2', 'g', 2)).toBe('200 g');
   });
 
   test('matches count units to the new amount and keeps their capitalization', () => {
     expect(scale('2', 'cloves', 1 / 4)).toBe('½ clove');
     expect(scale('1', 'Cup', 2)).toBe('2 Cups');
+    expect(scale('2', 'Cups', 1 / 2)).toBe('1 Cup');
+    expect(scale('2', 'large', 2)).toBe('4 large');
     expect(scale('1', 'leaf', 3)).toBe('3 leaves');
     expect(scale('2', 'cm piece', 1 / 2)).toBe('1 cm piece');
   });
@@ -84,6 +107,12 @@ describe('scaleIngredient', () => {
       });
     },
   );
+
+  test('never changes the ingredient it is given', () => {
+    const stored = Object.freeze({ quantity: '2', unit: 'cups', name: 'flour' });
+    expect(scaleIngredient(stored, 3).quantity).toBe('6');
+    expect(stored).toEqual({ quantity: '2', unit: 'cups', name: 'flour' });
+  });
 
   test('leaves ingredients without a quantity untouched', () => {
     expect(scaleIngredient({ quantity: '', unit: '', name: 'salt to taste' }, 3)).toEqual({
