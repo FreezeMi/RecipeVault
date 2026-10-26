@@ -59,12 +59,17 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
   const [favoritePending, setFavoritePending] = useState(false);
   const [checked, setChecked] = useState<ReadonlySet<number>>(new Set());
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
+  const deleteButtonRef = useRef<HTMLButtonElement>(null);
+  const wasConfirmingDeleteRef = useRef(false);
 
   useDocumentTitle(state.recipe?.title);
   useScrollRestoration(status !== 'loading');
 
+  // Move focus into the confirmation when it opens, and back to the Delete button when it closes.
   useEffect(() => {
     if (confirmingDelete) cancelDeleteRef.current?.focus();
+    else if (wasConfirmingDeleteRef.current) deleteButtonRef.current?.focus();
+    wasConfirmingDeleteRef.current = confirmingDelete;
   }, [confirmingDelete]);
 
   if (state.status === 'loading') return <PageLoader label="Opening recipe…" />;
@@ -218,25 +223,39 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
             <span />
           )}
 
-          {authenticated && (
-            <div className="flex flex-wrap items-center gap-2">
-              {confirmingDelete ? (
-                <m.div
-                  initial={{ opacity: 0, x: 8 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  role="alertdialog"
-                  aria-labelledby="confirm-delete-label"
-                  className="flex flex-wrap items-center gap-2 rounded-full border border-red-200 bg-red-50 py-1.5 pl-4 pr-1.5"
-                >
-                  <span id="confirm-delete-label" className="text-sm font-semibold text-red-800">
-                    Delete this recipe?
+          {authenticated &&
+            (confirmingDelete ? (
+              <m.div
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                role="alertdialog"
+                aria-labelledby="confirm-delete-title"
+                aria-describedby="confirm-delete-description"
+                onKeyDown={e => {
+                  if (e.key === 'Escape' && !deleting) setConfirmingDelete(false);
+                }}
+                className="w-full rounded-2xl border border-red-200 bg-red-50 p-4 md:w-96"
+              >
+                <div className="flex items-start gap-3">
+                  <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-red-100 text-red-600" aria-hidden="true">
+                    <TrashIcon size={20} weight="duotone" />
                   </span>
+                  <div className="pt-0.5">
+                    <p id="confirm-delete-title" className="font-semibold text-red-900">
+                      Delete this recipe?
+                    </p>
+                    <p id="confirm-delete-description" className="mt-0.5 text-sm leading-relaxed text-red-800">
+                      It will be permanently removed from your vault. This can't be undone.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4 flex gap-2 sm:justify-end">
                   <button
                     ref={cancelDeleteRef}
                     type="button"
                     onClick={() => setConfirmingDelete(false)}
                     disabled={deleting}
-                    className="rounded-full px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-white"
+                    className={`${buttonStyles.secondary} flex-1 sm:flex-none`}
                   >
                     Cancel
                   </button>
@@ -244,40 +263,40 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
                     type="button"
                     onClick={handleDelete}
                     disabled={deleting}
-                    className={`${buttonStyles.danger} px-4! py-1.5! text-sm`}
+                    className={`${buttonStyles.danger} flex-1 sm:flex-none`}
                   >
-                    {deleting ? <Spinner className="size-4" /> : <TrashIcon size={16} weight="bold" aria-hidden="true" />}
+                    {deleting ? <Spinner className="size-4.5" /> : <TrashIcon size={18} weight="bold" aria-hidden="true" />}
                     {deleting ? 'Deleting…' : 'Delete'}
                   </button>
-                </m.div>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={handleFavorite}
-                    disabled={favoritePending}
-                    aria-pressed={recipe.isFavorite}
-                    className={`${buttonStyles.secondary} ${recipe.isFavorite ? 'border-accent-200! bg-accent-50! text-accent-700!' : ''}`}
-                  >
-                    <HeartIcon size={18} weight={recipe.isFavorite ? 'fill' : 'bold'} aria-hidden="true" />
-                    {recipe.isFavorite ? 'Favorite' : 'Add to favorites'}
-                  </button>
-                  <Link to={paths.edit(recipe.id)} className={buttonStyles.secondary}>
-                    <PencilSimpleIcon size={18} weight="bold" aria-hidden="true" />
-                    Edit
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmingDelete(true)}
-                    className={`${buttonStyles.secondary} hover:border-red-200! hover:bg-red-50! hover:text-red-700!`}
-                  >
-                    <TrashIcon size={18} weight="bold" aria-hidden="true" />
-                    Delete
-                  </button>
-                </>
-              )}
-            </div>
-          )}
+                </div>
+              </m.div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleFavorite}
+                  disabled={favoritePending}
+                  aria-pressed={recipe.isFavorite}
+                  className={`${buttonStyles.secondary} ${recipe.isFavorite ? 'border-accent-200! bg-accent-50! text-accent-700!' : ''}`}
+                >
+                  <HeartIcon size={18} weight={recipe.isFavorite ? 'fill' : 'bold'} aria-hidden="true" />
+                  {recipe.isFavorite ? 'Favorite' : 'Add to favorites'}
+                </button>
+                <Link to={paths.edit(recipe.id)} className={buttonStyles.secondary}>
+                  <PencilSimpleIcon size={18} weight="bold" aria-hidden="true" />
+                  Edit
+                </Link>
+                <button
+                  ref={deleteButtonRef}
+                  type="button"
+                  onClick={() => setConfirmingDelete(true)}
+                  className={`${buttonStyles.secondary} hover:border-red-200! hover:bg-red-50! hover:text-red-700!`}
+                >
+                  <TrashIcon size={18} weight="bold" aria-hidden="true" />
+                  Delete
+                </button>
+              </div>
+            ))}
 
           {!authenticated && recipe.isFavorite && (
             <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent-700">
