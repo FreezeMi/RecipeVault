@@ -104,3 +104,99 @@ describe('delete confirmation', () => {
     expect(window.location.pathname).toBe('/recipes/7');
   });
 });
+
+describe('serving size', () => {
+  const soup: Recipe = {
+    ...recipe,
+    servings: 2,
+    ingredients: JSON.stringify([
+      { quantity: '1', unit: 'l', name: 'stock' },
+      { quantity: '1/2', unit: 'cup', name: 'cream' },
+      { quantity: 'a pinch', unit: '', name: 'nutmeg' },
+      { quantity: '', unit: '', name: 'salt to taste' },
+    ]),
+  };
+
+  const renderWith = async (overrides: Partial<Recipe> = {}) => {
+    vi.mocked(api.getRecipe).mockResolvedValue({ ...soup, ...overrides });
+    await renderDetail();
+  };
+  const selector = () => screen.getByRole('group', { name: 'Servings' });
+  const more = () => fireEvent.click(screen.getByRole('button', { name: 'More servings' }));
+  const fewer = () => fireEvent.click(screen.getByRole('button', { name: 'Fewer servings' }));
+
+  test("starts at the recipe's own serving count with amounts as written", async () => {
+    await renderWith();
+    expect(selector()).toHaveTextContent('2 servings');
+    expect(screen.getByText('As written in the recipe')).toBeInTheDocument();
+    expect(screen.getByText('1 l')).toBeInTheDocument();
+    expect(screen.getByText('1/2 cup')).toBeInTheDocument();
+  });
+
+  test('scales numeric amounts and leaves the rest as written', async () => {
+    await renderWith();
+    more();
+
+    expect(selector()).toHaveTextContent('3 servings');
+    expect(screen.getByText('1.5 l')).toBeInTheDocument();
+    expect(screen.getByText('¾ cup')).toBeInTheDocument();
+    expect(screen.getByText('a pinch')).toBeInTheDocument();
+    expect(screen.getByText('salt to taste')).toBeInTheDocument();
+    expect(screen.getByText(/Scaled from 2/)).toBeInTheDocument();
+    expect(screen.getByText("Some amounts couldn't be adjusted and are shown as written.")).toBeInTheDocument();
+  });
+
+  test('stops at 1 serving', async () => {
+    await renderWith();
+    fewer();
+    fewer();
+
+    expect(selector()).toHaveTextContent(/^1 serving$/);
+    expect(screen.getByRole('button', { name: 'Fewer servings' })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByText('0.5 l')).toBeInTheDocument();
+    expect(screen.getByText('¼ cup')).toBeInTheDocument();
+  });
+
+  test('stops at 12 servings', async () => {
+    await renderWith();
+    for (let i = 0; i < 15; i++) more();
+
+    expect(selector()).toHaveTextContent('12 servings');
+    expect(screen.getByRole('button', { name: 'More servings' })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByText('6 l')).toBeInTheDocument();
+    expect(screen.getByText('3 cups')).toBeInTheDocument();
+  });
+
+  test('Reset goes back to the amounts as written', async () => {
+    await renderWith();
+    more();
+    fireEvent.click(screen.getByRole('button', { name: 'Reset to 2 servings' }));
+
+    expect(selector()).toHaveTextContent('2 servings');
+    expect(screen.getByText('1 l')).toBeInTheDocument();
+    expect(screen.queryByText(/couldn't be adjusted/)).not.toBeInTheDocument();
+  });
+
+  test('a recipe for more than 12 can step down to 12 and back to its own yield', async () => {
+    await renderWith({ servings: 24, ingredients: '[{"quantity":"24","unit":"","name":"cookies"}]' });
+    fewer();
+    const cookies = () => screen.getByRole('checkbox').closest('label');
+    expect(selector()).toHaveTextContent('12 servings');
+    expect(cookies()).toHaveTextContent('12 cookies');
+
+    more();
+    expect(selector()).toHaveTextContent('24 servings');
+    expect(cookies()).toHaveTextContent('24 cookies');
+    expect(screen.getByRole('button', { name: 'More servings' })).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  test('is hidden without a serving count', async () => {
+    await renderWith({ servings: null });
+    expect(screen.queryByRole('group', { name: 'Servings' })).not.toBeInTheDocument();
+  });
+
+  test('is hidden when no amount can be scaled', async () => {
+    await renderWith({ ingredients: '["2 eggs", {"quantity":"a pinch","unit":"","name":"salt"}]' });
+    expect(screen.queryByRole('group', { name: 'Servings' })).not.toBeInTheDocument();
+  });
+});

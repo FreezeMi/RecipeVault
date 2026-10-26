@@ -11,6 +11,8 @@ import {
   FireIcon,
   CheckIcon,
   ArrowClockwiseIcon,
+  MinusIcon,
+  PlusIcon,
 } from '@phosphor-icons/react';
 import { api, toErrorMessage } from '../services/api';
 import { useAuth } from './AuthContext';
@@ -29,6 +31,7 @@ import {
   safeHttpUrl,
   totalMinutes,
 } from '../lib/recipe';
+import { scaleIngredient, servingOptions } from '../lib/servings';
 
 interface Props {
   id: number;
@@ -48,6 +51,79 @@ function Stat({ icon, label, value }: Readonly<{ icon: ReactNode; label: string;
   );
 }
 
+const stepButtonClass =
+  'grid size-8 place-items-center rounded-full text-stone-600 transition-colors hover:bg-stone-100 hover:text-stone-900 aria-disabled:cursor-not-allowed aria-disabled:opacity-40 aria-disabled:hover:bg-transparent aria-disabled:hover:text-stone-600';
+
+function ServingsControl({
+  value,
+  original,
+  onChange,
+}: Readonly<{ value: number; original: number; onChange: (servings: number) => void }>) {
+  const options = servingOptions(original);
+  const index = options.indexOf(value);
+  const fewer: number | undefined = options[index - 1];
+  const more: number | undefined = options[index + 1];
+  // aria-disabled instead of disabled keeps keyboard focus on the button when a limit is reached.
+  const step = (target: number | undefined) => {
+    if (target !== undefined) onChange(target);
+  };
+
+  return (
+    <div className="mb-3 rounded-2xl border border-stone-200/80 bg-stone-50/60 px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <span id="servings-label" className="font-semibold text-stone-900">
+          Servings
+        </span>
+        <div
+          role="group"
+          aria-labelledby="servings-label"
+          className="flex items-center gap-1 rounded-full border border-stone-200 bg-white p-1 shadow-sm"
+        >
+          <button
+            type="button"
+            onClick={() => step(fewer)}
+            aria-disabled={fewer === undefined}
+            aria-label="Fewer servings"
+            className={stepButtonClass}
+          >
+            <MinusIcon size={16} weight="bold" aria-hidden="true" />
+          </button>
+          <output aria-live="polite" className="min-w-7 text-center text-lg font-semibold tabular-nums text-stone-900">
+            {value}
+            <span className="sr-only">{value === 1 ? ' serving' : ' servings'}</span>
+          </output>
+          <button
+            type="button"
+            onClick={() => step(more)}
+            aria-disabled={more === undefined}
+            aria-label="More servings"
+            className={stepButtonClass}
+          >
+            <PlusIcon size={16} weight="bold" aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+      <p className="mt-1 text-sm text-stone-500">
+        {value === original ? (
+          'As written in the recipe'
+        ) : (
+          <>
+            Scaled from {original} ·{' '}
+            <button
+              type="button"
+              onClick={() => onChange(original)}
+              aria-label={`Reset to ${formatServings(original)}`}
+              className="font-semibold text-brand-700 hover:text-brand-900"
+            >
+              Reset
+            </button>
+          </>
+        )}
+      </p>
+    </div>
+  );
+}
+
 export default function RecipeDetail({ id }: Readonly<Props>) {
   const state = useRecipe(id);
   const { status, reload, setRecipe } = state;
@@ -58,6 +134,8 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
   const [deleting, setDeleting] = useState(false);
   const [favoritePending, setFavoritePending] = useState(false);
   const [checked, setChecked] = useState<ReadonlySet<number>>(new Set());
+  // null = the recipe's own serving count.
+  const [selectedServings, setSelectedServings] = useState<number | null>(null);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
   const deleteButtonRef = useRef<HTMLButtonElement>(null);
   const wasConfirmingDeleteRef = useRef(false);
@@ -97,7 +175,14 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
 
   const { recipe } = state;
   const tags = parseTags(recipe.tags);
-  const ingredients = parseIngredients(recipe.ingredients);
+  const baseServings = recipe.servings;
+  const servings = selectedServings ?? baseServings;
+  const servingFactor = baseServings !== null && servings !== null ? servings / baseServings : 1;
+  const isScaled = servingFactor !== 1;
+  // Scaled for display only; the stored recipe keeps its original amounts.
+  const ingredients = parseIngredients(recipe.ingredients).map(ingredient => scaleIngredient(ingredient, servingFactor));
+  const canScale = baseServings !== null && ingredients.some(ingredient => ingredient.scalable);
+  const hasUnscaledAmounts = isScaled && ingredients.some(ingredient => !ingredient.scalable && ingredient.quantity !== '');
   const instructions = parseInstructions(recipe.instructions);
   const minutes = totalMinutes(recipe);
   const sourceUrl = safeHttpUrl(recipe.sourceUrl);
@@ -325,37 +410,60 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
             {ingredients.length === 0 ? (
               <p className="text-stone-500">No ingredients listed.</p>
             ) : (
-              <ul className="divide-y divide-stone-100">
-                {ingredients.map((ingredient, index) => {
-                  const isChecked = checked.has(index);
-                  const amount = [ingredient.quantity, ingredient.unit].filter(Boolean).join(' ');
-                  return (
-                    // Index keys are safe: the list is static for the lifetime of this view.
-                    <li key={index}>
-                      <label className="group flex cursor-pointer items-start gap-3 py-3">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => toggleIngredient(index)}
-                          className="peer sr-only"
-                        />
-                        <span
-                          className={`mt-0.5 grid size-5 shrink-0 place-items-center rounded-md border-2 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-brand-600 peer-focus-visible:ring-offset-2 ${
-                            isChecked ? 'border-brand-600 bg-brand-600 text-white' : 'border-stone-300 bg-white group-hover:border-brand-500'
-                          }`}
-                          aria-hidden="true"
-                        >
-                          {isChecked && <CheckIcon size={12} weight="bold" />}
-                        </span>
-                        <span className={`leading-relaxed transition-colors ${isChecked ? 'text-stone-400 line-through' : 'text-stone-700'}`}>
-                          {amount && <span className={`font-semibold ${isChecked ? '' : 'text-stone-900'}`}>{amount} </span>}
-                          {ingredient.name}
-                        </span>
-                      </label>
-                    </li>
-                  );
-                })}
-              </ul>
+              <>
+                {canScale && baseServings !== null && (
+                  <ServingsControl value={selectedServings ?? baseServings} original={baseServings} onChange={setSelectedServings} />
+                )}
+                <ul className="divide-y divide-stone-100">
+                  {ingredients.map((ingredient, index) => {
+                    const isChecked = checked.has(index);
+                    const amount = [ingredient.quantity, ingredient.unit].filter(Boolean).join(' ');
+                    const isAdjusted = isScaled && ingredient.scalable;
+                    let amountColor = 'text-stone-900';
+                    if (isChecked) amountColor = '';
+                    else if (isAdjusted) amountColor = 'text-brand-700';
+                    return (
+                      // Index keys are safe: the list is static for the lifetime of this view.
+                      <li key={index}>
+                        <label className="group flex cursor-pointer items-start gap-3 py-3">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => toggleIngredient(index)}
+                            className="peer sr-only"
+                          />
+                          <span
+                            className={`mt-0.5 grid size-5 shrink-0 place-items-center rounded-md border-2 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-brand-600 peer-focus-visible:ring-offset-2 ${
+                              isChecked ? 'border-brand-600 bg-brand-600 text-white' : 'border-stone-300 bg-white group-hover:border-brand-500'
+                            }`}
+                            aria-hidden="true"
+                          >
+                            {isChecked && <CheckIcon size={12} weight="bold" />}
+                          </span>
+                          <span className={`leading-relaxed transition-colors ${isChecked ? 'text-stone-400 line-through' : 'text-stone-700'}`}>
+                            {amount && (
+                              <m.span
+                                // A new key on every serving change makes adjusted amounts fade in as feedback.
+                                key={isAdjusted ? servings : 'as-written'}
+                                initial={isAdjusted ? { opacity: 0.25 } : false}
+                                animate={{ opacity: 1 }}
+                                transition={{ duration: 0.3 }}
+                                className={`font-semibold ${amountColor}`}
+                              >
+                                {amount}{' '}
+                              </m.span>
+                            )}
+                            {ingredient.name}
+                          </span>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {hasUnscaledAmounts && (
+                  <p className="mt-3 text-sm text-stone-500">Some amounts couldn't be adjusted and are shown as written.</p>
+                )}
+              </>
             )}
           </section>
 
