@@ -1,9 +1,10 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import RecipeList from '../../components/RecipeList';
 import { ToastProvider } from '../../components/Toast';
 import * as AuthContext from '../../components/AuthContext';
 import { api, ApiError } from '../../services/api';
+import { setLanguage } from '../../lib/i18n';
 import type { Recipe } from '../../types';
 
 vi.mock('../../components/AuthContext', () => ({ useAuth: vi.fn() }));
@@ -25,6 +26,8 @@ const recipe = (id: number, overrides: Partial<Recipe> = {}): Recipe => ({
   ingredients: '[]',
   instructions: '[]',
   notes: null,
+  language: 'en',
+  translations: null,
   isFavorite: false,
   createdAt: '2024-01-01T00:00:00.000Z',
   updatedAt: '2024-01-01T00:00:00.000Z',
@@ -99,4 +102,31 @@ test('visitors do not see management controls', async () => {
   await screen.findByRole('link', { name: 'Recipe 1' });
   expect(screen.queryByRole('link', { name: /New recipe/ })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /favorites$/ })).not.toBeInTheDocument();
+});
+
+test('Dutch tag chips still filter by the stored English tag name', async () => {
+  setLanguage('nl');
+  vi.mocked(api.getRecipes).mockResolvedValue([]);
+  renderList();
+  await screen.findByText('Je kluis is leeg');
+
+  fireEvent.click(screen.getByRole('button', { name: 'Diner' }));
+
+  await waitFor(() => expect(window.location.search).toBe('?tag=Dinner'));
+  expect(api.getRecipes).toHaveBeenLastCalledWith({ search: '', tag: 'Dinner', favorite: false }, expect.any(AbortSignal));
+  expect(screen.getByRole('button', { name: 'Diner' })).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('switching language keeps the filters and does not refetch', async () => {
+  window.history.replaceState(null, '', '/?q=soup&tag=Dinner');
+  vi.mocked(api.getRecipes).mockResolvedValue([recipe(1)]);
+  renderList();
+  await screen.findByRole('link', { name: 'Recipe 1' });
+
+  act(() => setLanguage('nl'));
+
+  expect(screen.getByRole('searchbox', { name: 'Recepten zoeken' })).toHaveValue('soup');
+  expect(screen.getByRole('button', { name: 'Diner' })).toHaveAttribute('aria-pressed', 'true');
+  expect(window.location.search).toBe('?q=soup&tag=Dinner');
+  expect(api.getRecipes).toHaveBeenCalledTimes(1);
 });

@@ -5,6 +5,7 @@ import { useToast } from './Toast';
 import { toErrorMessage } from '../services/api';
 import { navigate, paths, useLocation } from '../lib/router';
 import { useDocumentTitle } from '../lib/hooks';
+import { useT } from '../lib/i18n';
 import { Notice, Spinner, buttonStyles, cardClass, inputClass, labelClass } from './ui';
 
 /** Only allow same-app paths as redirect targets (prevents open redirects like `//evil.com`). */
@@ -16,13 +17,14 @@ export default function Login() {
   const next = safeRedirectPath(new URLSearchParams(search).get('next'));
   const { authenticated, login } = useAuth();
   const toast = useToast();
+  const t = useT();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  useDocumentTitle('Sign in');
+  useDocumentTitle(t.login.title);
 
   // Already signed in (e.g. visiting /login directly): continue to the destination.
   useEffect(() => {
@@ -36,10 +38,10 @@ export default function Login() {
 
     try {
       await login(email.trim(), password);
-      toast.success('Welcome back!');
+      toast.success(t.login.welcome);
       navigate(next, { replace: true });
     } catch (err) {
-      setError(toErrorMessage(err, 'Invalid email or password.'));
+      setError(toErrorMessage(err, t.login.invalidCredentials));
       setLoading(false);
     }
   };
@@ -50,8 +52,8 @@ export default function Login() {
         <span className="mx-auto mb-4 grid size-12 place-items-center rounded-2xl bg-brand-50 text-brand-600">
           <LockKeyIcon size={26} weight="duotone" aria-hidden="true" />
         </span>
-        <h1 className="font-display text-3xl font-semibold tracking-tight text-stone-900">Sign in</h1>
-        <p className="mt-2 text-stone-600">Sign in to add, edit and organize recipes.</p>
+        <h1 className="font-display text-3xl font-semibold tracking-tight text-stone-900">{t.login.title}</h1>
+        <p className="mt-2 text-stone-600">{t.login.intro}</p>
       </div>
 
       {error && (
@@ -63,7 +65,7 @@ export default function Login() {
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>
           <label htmlFor="email" className={labelClass}>
-            Email
+            {t.login.email}
           </label>
           <input
             id="email"
@@ -79,7 +81,7 @@ export default function Login() {
 
         <div>
           <label htmlFor="password" className={labelClass}>
-            Password
+            {t.login.password}
           </label>
           <input
             id="password"
@@ -94,7 +96,7 @@ export default function Login() {
 
         <button type="submit" disabled={loading} className={`${buttonStyles.primary} mt-2 w-full py-3!`}>
           {loading && <Spinner className="size-5" />}
-          {loading ? 'Signing in…' : 'Sign in'}
+          {loading ? t.login.signingIn : t.login.submit}
         </button>
       </form>
     </div>

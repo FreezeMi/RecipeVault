@@ -1,8 +1,8 @@
 // Input normalization for recipe payloads.
 //
-// The database stores tags, ingredients and instructions as JSON strings. Clients may send
-// either real arrays (the web form) or the JSON strings returned by the API (backup files),
-// so both shapes are accepted here and normalized into a single canonical form.
+// The database stores tags, ingredients, instructions and translations as JSON strings. Clients
+// may send either real arrays/objects (the web form) or the JSON strings returned by the API
+// (backup files), so both shapes are accepted here and normalized into a single canonical form.
 
 export const LIMITS = {
   title: 200,
@@ -28,10 +28,23 @@ export const PASSWORD_RULES = {
   maxBytes: 72,
 } as const;
 
+/** Languages a recipe can be written or translated in. Mirrors LANGUAGES in frontend/src/lib/i18n.ts. */
+export const LANGUAGES = ['en', 'nl'] as const;
+export type Language = (typeof LANGUAGES)[number];
+
 export interface Ingredient {
   quantity: string;
   unit: string;
   name: string;
+}
+
+/** The recipe text in another language. Times, servings, tags and links are shared by all languages. */
+export interface RecipeTranslation {
+  title: string;
+  description: string | null;
+  ingredients: Ingredient[];
+  instructions: string[];
+  notes: string | null;
 }
 
 export interface RecipeData {
@@ -47,6 +60,10 @@ export interface RecipeData {
   instructions: string;
   notes: string | null;
   isFavorite?: boolean;
+  // Left out when the payload doesn't mention them, so an update from a client that doesn't
+  // know about languages keeps what is stored. A new recipe then gets the database defaults.
+  language?: Language;
+  translations?: string | null; // JSON object of RecipeTranslation keyed by language
   createdAt?: Date;
 }
 
@@ -91,6 +108,21 @@ const parseJsonArray = (value: unknown): unknown[] | null => {
     return null;
   }
 };
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const parseJsonObject = (value: unknown): Record<string, unknown> | null => {
+  if (typeof value !== 'string') return isRecord(value) ? value : null;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const isLanguage = (value: unknown): value is Language => LANGUAGES.some(language => language === value);
 
 export const toSafeHttpUrl = (value: unknown): string | null => {
   if (typeof value !== 'string') return null;
@@ -244,6 +276,65 @@ const normalizeInstructions = (value: unknown, check: Checker): string[] => {
   return check.cap(steps, LIMITS.instructions, `A recipe can have at most ${LIMITS.instructions} steps.`);
 };
 
+const normalizeLanguage = (value: unknown, check: Checker): Language | undefined => {
+  if (value === undefined) return undefined;
+  if (isLanguage(value)) return value;
+  check.fail(`language must be one of: ${LANGUAGES.join(', ')}.`);
+  return undefined;
+};
+
+/** One translation, held to the same rules as the recipe's own text. Null when it can't be repaired. */
+const normalizeTranslation = (language: Language, value: unknown, check: Checker): RecipeTranslation | null => {
+  const own = new Checker(check.lenient);
+  let translation: RecipeTranslation | null = null;
+  if (isRecord(value)) {
+    translation = {
+      title: normalizeTitle(value.title, own),
+      description: normalizeText('description', value.description, LIMITS.description, own),
+      ingredients: normalizeIngredients(value.ingredients, own),
+      instructions: normalizeInstructions(value.instructions, own),
+      notes: normalizeText('notes', value.notes, LIMITS.notes, own),
+    };
+  } else {
+    own.errors.push('must be an object.');
+  }
+  // Prefixed so the message says which translation is wrong (in lenient mode `fail` records nothing).
+  for (const error of own.errors) check.fail(`translations.${language}: ${error}`);
+  return own.errors.length > 0 ? null : translation;
+};
+
+/**
+ * Returns the translations as a JSON string, null to clear them, or undefined when the payload
+ * doesn't mention them. A translation that can't be repaired is an error in strict mode and is
+ * dropped (keeping the recipe) in lenient mode.
+ */
+const normalizeTranslations = (value: unknown, language: Language | undefined, check: Checker): string | null | undefined => {
+  if (value === undefined) return undefined;
+  if (isBlank(value)) return null;
+  const entries = parseJsonObject(value);
+  if (!entries) {
+    check.fail('translations must be an object keyed by language.');
+    return undefined;
+  }
+
+  const unsupported = Object.keys(entries).filter(key => !isLanguage(key));
+  if (unsupported.length > 0) check.fail(`translations has unsupported languages: ${unsupported.join(', ').slice(0, 100)}.`);
+
+  // Built in LANGUAGES order so the stored JSON doesn't depend on the order the client used.
+  const translations: Partial<Record<Language, RecipeTranslation>> = {};
+  for (const key of LANGUAGES) {
+    if (!Object.hasOwn(entries, key)) continue;
+    // Only checkable when the payload states the recipe's language; an update may leave it out.
+    if (key === language) {
+      check.fail(`translations cannot include the recipe's own language (${key}).`);
+      continue;
+    }
+    const translation = normalizeTranslation(key, entries[key], check);
+    if (translation) translations[key] = translation;
+  }
+  return Object.keys(translations).length > 0 ? JSON.stringify(translations) : null;
+};
+
 const normalizeCreatedAt = (value: unknown): Date | undefined => {
   if (typeof value !== 'string') return undefined;
   const date = new Date(value);
@@ -275,6 +366,11 @@ export function normalizeRecipeInput(input: unknown, mode: ValidationMode = 'str
 
   if (typeof body.isFavorite === 'boolean') data.isFavorite = body.isFavorite;
   else if (body.isFavorite !== undefined) check.fail('isFavorite must be a boolean.');
+
+  const language = normalizeLanguage(body.language, check);
+  if (language) data.language = language;
+  const translations = normalizeTranslations(body.translations, language, check);
+  if (translations !== undefined) data.translations = translations;
 
   // Restored backups keep their original creation date so the vault order is preserved.
   if (check.lenient) {

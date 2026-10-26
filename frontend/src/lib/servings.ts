@@ -1,4 +1,5 @@
 import type { Ingredient } from '../types';
+import type { Language } from './i18n';
 
 // Scales ingredient amounts to another serving size for display. The stored recipe is never changed.
 
@@ -43,7 +44,8 @@ interface ParsedQuantity {
   decimalComma: boolean;
 }
 
-const RANGE = /^(.+?)( ?[-–—] ?| to )(.+)$/i;
+// "2-3", "2 to 3" or the Dutch "2 tot 3".
+const RANGE = /^(.+?)( ?[-–—] ?| to | tot )(.+)$/i;
 
 const parseQuantity = (quantity: string): ParsedQuantity | null => {
   const text = quantity.trim().replace(/\s+/g, ' ').replaceAll('⁄', '/');
@@ -99,22 +101,43 @@ const formatAmount = (value: number, metric: boolean, decimalComma: boolean): Fo
   return fraction ?? formatDecimal(value, decimalComma);
 };
 
-// Unit words that change with the amount ("1 cup", "2 cups"). Abbreviations such as tbsp or g stay as they are.
-const UNIT_FORMS: [singular: string, plural: string][] = [
-  ['cup', 'cups'], ['clove', 'cloves'], ['can', 'cans'], ['tin', 'tins'], ['jar', 'jars'], ['bottle', 'bottles'],
-  ['bag', 'bags'], ['packet', 'packets'], ['package', 'packages'], ['slice', 'slices'], ['piece', 'pieces'],
-  ['sprig', 'sprigs'], ['stalk', 'stalks'], ['stick', 'sticks'], ['sheet', 'sheets'], ['head', 'heads'],
-  ['bunch', 'bunches'], ['pinch', 'pinches'], ['dash', 'dashes'], ['drop', 'drops'], ['handful', 'handfuls'],
-  ['leaf', 'leaves'], ['teaspoon', 'teaspoons'], ['tablespoon', 'tablespoons'], ['ounce', 'ounces'],
-  ['pound', 'pounds'], ['pint', 'pints'], ['quart', 'quarts'], ['gallon', 'gallons'], ['gram', 'grams'],
-  ['kilogram', 'kilograms'], ['liter', 'liters'], ['litre', 'litres'], ['milliliter', 'milliliters'],
-  ['millilitre', 'millilitres'],
-];
-const PLURALS = new Map(UNIT_FORMS);
-const SINGULARS = new Map(UNIT_FORMS.map(([singular, plural]) => [plural, singular]));
+// Unit words that change with the amount ("1 cup", "2 cups"), per language of the recipe text.
+// Abbreviations such as tbsp, el or g stay as they are, and so do Dutch metric words ("200 gram", "2 liter").
+const UNIT_FORMS: Record<Language, [singular: string, plural: string][]> = {
+  en: [
+    ['cup', 'cups'], ['clove', 'cloves'], ['can', 'cans'], ['tin', 'tins'], ['jar', 'jars'], ['bottle', 'bottles'],
+    ['bag', 'bags'], ['packet', 'packets'], ['package', 'packages'], ['slice', 'slices'], ['piece', 'pieces'],
+    ['sprig', 'sprigs'], ['stalk', 'stalks'], ['stick', 'sticks'], ['sheet', 'sheets'], ['head', 'heads'],
+    ['bunch', 'bunches'], ['pinch', 'pinches'], ['dash', 'dashes'], ['drop', 'drops'], ['handful', 'handfuls'],
+    ['leaf', 'leaves'], ['teaspoon', 'teaspoons'], ['tablespoon', 'tablespoons'], ['ounce', 'ounces'],
+    ['pound', 'pounds'], ['pint', 'pints'], ['quart', 'quarts'], ['gallon', 'gallons'], ['gram', 'grams'],
+    ['kilogram', 'kilograms'], ['liter', 'liters'], ['litre', 'litres'], ['milliliter', 'milliliters'],
+    ['millilitre', 'millilitres'],
+  ],
+  nl: [
+    ['kop', 'koppen'], ['kopje', 'kopjes'], ['teen', 'tenen'], ['teentje', 'teentjes'], ['blik', 'blikken'],
+    ['blikje', 'blikjes'], ['pot', 'potten'], ['potje', 'potjes'], ['fles', 'flessen'], ['flesje', 'flesjes'],
+    ['zak', 'zakken'], ['zakje', 'zakjes'], ['pak', 'pakken'], ['pakje', 'pakjes'], ['plak', 'plakken'],
+    ['plakje', 'plakjes'], ['stuk', 'stuks'], ['takje', 'takjes'], ['steel', 'stelen'], ['stengel', 'stengels'],
+    ['vel', 'vellen'], ['velletje', 'velletjes'], ['krop', 'kroppen'], ['bos', 'bossen'], ['bosje', 'bosjes'],
+    ['snufje', 'snufjes'], ['scheutje', 'scheutjes'], ['druppel', 'druppels'], ['blaadje', 'blaadjes'],
+    ['eetlepel', 'eetlepels'], ['theelepel', 'theelepels'], ['lepel', 'lepels'], ['schijf', 'schijven'],
+    ['schijfje', 'schijfjes'], ['partje', 'partjes'], ['bol', 'bollen'], ['bolletje', 'bolletjes'],
+  ],
+};
 
-const inflectUnit = (unit: string, plural: boolean): string => {
-  const form = (plural ? PLURALS : SINGULARS).get(unit.toLowerCase());
+const inflections = (forms: [singular: string, plural: string][]) => ({
+  plurals: new Map(forms),
+  singulars: new Map(forms.map(([singular, plural]) => [plural, singular])),
+});
+const INFLECTIONS: Record<Language, ReturnType<typeof inflections>> = {
+  en: inflections(UNIT_FORMS.en),
+  nl: inflections(UNIT_FORMS.nl),
+};
+
+const inflectUnit = (unit: string, plural: boolean, language: Language): string => {
+  const { plurals, singulars } = INFLECTIONS[language];
+  const form = (plural ? plurals : singulars).get(unit.toLowerCase());
   if (!form) return unit;
   const capitalized = unit[0] !== unit[0].toLowerCase();
   return capitalized ? form[0].toUpperCase() + form.slice(1) : form;
@@ -127,22 +150,24 @@ export interface ScaledIngredient extends Ingredient {
 
 /**
  * Multiplies an ingredient's quantity by `factor` (selected servings ÷ original servings).
- * At a factor of 1 the ingredient is returned exactly as written.
+ * At a factor of 1 the ingredient is returned exactly as written. `language` is the language the
+ * ingredient is written in, which decides unit plurals and, for Dutch, the decimal comma.
  */
-export const scaleIngredient = (ingredient: Ingredient, factor: number): ScaledIngredient => {
+export const scaleIngredient = (ingredient: Ingredient, factor: number, language: Language): ScaledIngredient => {
   const parsed = parseQuantity(ingredient.quantity);
   if (!parsed) return { ...ingredient, scalable: false };
   if (factor === 1) return { ...ingredient, scalable: true };
 
   const metric = isMetric(ingredient.unit);
-  const formatted = parsed.amounts.map(amount => formatAmount(amount * factor, metric, parsed.decimalComma));
+  const decimalComma = parsed.decimalComma || language === 'nl';
+  const formatted = parsed.amounts.map(amount => formatAmount(amount * factor, metric, decimalComma));
   const texts = [...new Set(formatted.map(amount => amount.text))]; // a range can round to a single amount
   const largest = Math.max(...formatted.map(amount => amount.value));
 
   return {
     ...ingredient,
     quantity: texts.join(parsed.separator),
-    unit: inflectUnit(ingredient.unit, largest > 1),
+    unit: inflectUnit(ingredient.unit, largest > 1, language),
     scalable: true,
   };
 };

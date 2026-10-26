@@ -4,11 +4,13 @@ import { CookingPotIcon, PlusIcon, SignInIcon, SignOutIcon, UserCircleIcon } fro
 import RecipeList from './components/RecipeList';
 import RecipeDetail from './components/RecipeDetail';
 import Login from './components/Login';
+import LanguageSwitcher from './components/LanguageSwitcher';
 import { useAuth } from './components/AuthContext';
 import { useToast } from './components/Toast';
 import { PageLoader, buttonStyles } from './components/ui';
 import { Link, navigate, parseRoute, paths, useLocation, type Route } from './lib/router';
 import { useDocumentTitle } from './lib/hooks';
+import { useT } from './lib/i18n';
 
 // Admin-only screens are split into their own chunks; visitors never download them.
 const RecipeForm = lazy(() => import('./components/RecipeForm'));
@@ -22,14 +24,15 @@ const navLinkClass = (active: boolean) =>
   }`;
 
 function NotFound() {
-  useDocumentTitle('Page not found');
+  const t = useT();
+  useDocumentTitle(t.notFound.title);
   return (
     <div className="mx-auto max-w-md py-24 text-center">
       <p className="font-display text-6xl font-semibold text-stone-300">404</p>
-      <h1 className="mt-4 font-display text-2xl font-semibold text-stone-900">This page isn't on the menu</h1>
-      <p className="mt-2 text-stone-600">The page you're looking for doesn't exist or has been moved.</p>
+      <h1 className="mt-4 font-display text-2xl font-semibold text-stone-900">{t.notFound.heading}</h1>
+      <p className="mt-2 text-stone-600">{t.notFound.text}</p>
       <Link to={paths.list()} className={`${buttonStyles.primary} mt-8`}>
-        Back to recipes
+        {t.common.backToRecipes}
       </Link>
     </div>
   );
@@ -40,6 +43,7 @@ function App() {
   const route = parseRoute(pathname);
   const { authenticated, loading, logout } = useAuth();
   const toast = useToast();
+  const t = useT();
 
   const isProtected = PROTECTED_ROUTES.has(route.name);
 
@@ -54,12 +58,12 @@ function App() {
   const handleLogout = async () => {
     navigate(paths.list());
     await logout();
-    toast.success('You have been signed out.');
+    toast.success(t.session.signedOut);
   };
 
   let page: ReactNode;
   if (isProtected && (loading || !authenticated)) {
-    page = <PageLoader label="Checking your session…" />;
+    page = <PageLoader label={t.nav.checkingSession} />;
   } else {
     switch (route.name) {
       case 'list':
@@ -91,7 +95,7 @@ function App() {
         href="#main"
         className="sr-only z-[70] rounded-full bg-stone-900 px-4 py-2 font-medium text-white focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
       >
-        Skip to content
+        {t.nav.skipToContent}
       </a>
 
       {/* Soft ambient color — desktop only, blur is expensive on phones. */}
@@ -109,18 +113,19 @@ function App() {
             <span className="whitespace-nowrap font-display text-xl font-semibold tracking-tight text-stone-900 md:text-2xl">Recipe Vault</span>
           </Link>
 
-          <nav aria-label="Main" className="flex items-center gap-1 sm:gap-2">
+          <nav aria-label={t.nav.main} className="flex items-center gap-1 sm:gap-2">
+            <LanguageSwitcher />
             {authenticated ? (
               <>
                 {/* Wrapper controls visibility: the button's own inline-flex would override `hidden`. */}
                 <span className="hidden sm:block">
                   <Link
                     to={paths.new()}
-                    className={`${buttonStyles.primary} px-4! py-2! text-sm`}
+                    className={`${buttonStyles.primary} whitespace-nowrap px-4! py-2! text-sm`}
                     aria-current={route.name === 'new' ? 'page' : undefined}
                   >
                     <PlusIcon size={16} weight="bold" aria-hidden="true" />
-                    New recipe
+                    {t.common.newRecipe}
                   </Link>
                 </span>
                 <Link
@@ -129,11 +134,11 @@ function App() {
                   aria-current={route.name === 'account' ? 'page' : undefined}
                 >
                   <UserCircleIcon size={20} aria-hidden="true" />
-                  <span className="sr-only sm:not-sr-only">Account</span>
+                  <span className="sr-only sm:not-sr-only">{t.nav.account}</span>
                 </Link>
                 <button type="button" onClick={handleLogout} className={navLinkClass(false)}>
                   <SignOutIcon size={20} aria-hidden="true" />
-                  <span className="sr-only sm:not-sr-only">Sign out</span>
+                  <span className="sr-only sm:not-sr-only">{t.nav.signOut}</span>
                 </button>
               </>
             ) : (
@@ -143,7 +148,8 @@ function App() {
                 aria-current={route.name === 'login' ? 'page' : undefined}
               >
                 <SignInIcon size={20} aria-hidden="true" />
-                Sign in
+                {/* Icon-only on phones, like the signed-in links, to leave room for the language switcher. */}
+                <span className="sr-only sm:not-sr-only">{t.nav.signIn}</span>
               </Link>
             )}
           </nav>
@@ -159,7 +165,7 @@ function App() {
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
           >
-            <Suspense fallback={<PageLoader label="Loading…" />}>{page}</Suspense>
+            <Suspense fallback={<PageLoader label={t.common.loading} />}>{page}</Suspense>
           </m.div>
         </AnimatePresence>
       </main>

@@ -1,9 +1,10 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import RecipeDetail from '../../components/RecipeDetail';
 import { useAuth } from '../../components/AuthContext';
 import { ToastProvider } from '../../components/Toast';
 import { api, ApiError } from '../../services/api';
+import { setLanguage } from '../../lib/i18n';
 import type { Recipe } from '../../types';
 
 vi.mock('../../services/api', async importOriginal => {
@@ -32,6 +33,8 @@ const recipe: Recipe = {
   ingredients: '[{"quantity":"1","unit":"l","name":"stock"}]',
   instructions: '["Boil","Serve"]',
   notes: null,
+  language: 'en',
+  translations: null,
   isFavorite: false,
   createdAt: '2024-01-01T00:00:00.000Z',
   updatedAt: '2024-01-01T00:00:00.000Z',
@@ -303,5 +306,91 @@ describe('serving size', () => {
   test('is hidden when no amount can be scaled', async () => {
     await renderWith({ ingredients: '["2 eggs", {"quantity":"a pinch","unit":"","name":"salt"}]' });
     expect(screen.queryByRole('group', { name: 'Servings' })).not.toBeInTheDocument();
+  });
+});
+
+test('switching language keeps the selected servings and checked ingredients without refetching', async () => {
+  await renderDetail();
+  fireEvent.click(screen.getByRole('button', { name: 'More servings' }));
+  fireEvent.click(screen.getAllByRole('checkbox')[0]!);
+
+  act(() => setLanguage('nl'));
+
+  expect(screen.getByRole('heading', { name: 'Ingrediënten' })).toBeInTheDocument();
+  expect(screen.getByRole('group', { name: 'Personen' })).toHaveTextContent('3 personen');
+  expect(screen.getByText('1.5 l')).toBeInTheDocument();
+  expect(screen.getAllByRole('checkbox')[0]).toBeChecked();
+  expect(screen.getByRole('button', { name: 'Herstellen naar 2 personen' })).toBeInTheDocument();
+  expect(api.getRecipe).toHaveBeenCalledTimes(1);
+});
+
+describe('languages', () => {
+  const translated: Recipe = {
+    ...recipe,
+    notes: 'Serve hot',
+    translations: JSON.stringify({
+      nl: {
+        title: 'Soep',
+        description: 'Warm en romig',
+        ingredients: [
+          { quantity: '1', unit: 'teentje', name: 'knoflook' },
+          { quantity: '1', unit: 'l', name: 'bouillon' },
+        ],
+        instructions: ['Koken', 'Opdienen'],
+        notes: 'Heet serveren',
+      },
+    }),
+  };
+
+  const renderPage = async (heading: string) => {
+    render(
+      <ToastProvider>
+        <RecipeDetail id={7} />
+      </ToastProvider>,
+    );
+    return screen.findByRole('heading', { name: heading });
+  };
+
+  test('shows the Dutch translation in Dutch and scales it the Dutch way', async () => {
+    setLanguage('nl');
+    vi.mocked(api.getRecipe).mockResolvedValue(translated);
+    expect(await renderPage('Soep')).not.toHaveAttribute('lang');
+
+    expect(screen.getByText('Warm en romig')).toBeInTheDocument();
+    expect(screen.getByText('Opdienen')).toBeInTheDocument();
+    expect(screen.getByText('Heet serveren')).toBeInTheDocument();
+    expect(screen.queryByText(/nog niet in het Nederlands vertaald/)).not.toBeInTheDocument();
+    expect(document.title).toBe('Soep · Recipe Vault');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Meer personen' }));
+    expect(screen.getByText('1½ teentjes')).toBeInTheDocument();
+    expect(screen.getByText('1,5 l')).toBeInTheDocument();
+  });
+
+  test('without a translation it shows the original, says so, and marks its language', async () => {
+    setLanguage('nl');
+    expect(await renderPage('Soup')).toHaveAttribute('lang', 'en');
+    expect(screen.getByText('Dit recept is nog niet in het Nederlands vertaald en wordt in het Engels getoond.')).toBeInTheDocument();
+  });
+
+  test('a recipe written in Dutch says so in English', async () => {
+    vi.mocked(api.getRecipe).mockResolvedValue({ ...recipe, title: 'Erwtensoep', language: 'nl' });
+    expect(await renderPage('Erwtensoep')).toHaveAttribute('lang', 'nl');
+    expect(screen.getByText("This recipe isn't available in English yet, so it's shown in Dutch.")).toBeInTheDocument();
+  });
+
+  test('switching language swaps the text in place; ticked ingredients belong to one language', async () => {
+    vi.mocked(api.getRecipe).mockResolvedValue(translated);
+    await renderPage('Soup');
+    fireEvent.click(screen.getAllByRole('checkbox')[0]!);
+
+    act(() => setLanguage('nl'));
+    expect(screen.getByRole('heading', { name: 'Soep' })).toBeInTheDocument();
+    expect(screen.getAllByRole('checkbox')[0]).not.toBeChecked();
+
+    act(() => setLanguage('en'));
+    expect(screen.getByRole('heading', { name: 'Soup' })).toBeInTheDocument();
+    expect(screen.getAllByRole('checkbox')[0]).toBeChecked();
+    expect(api.getRecipe).toHaveBeenCalledTimes(1);
   });
 });

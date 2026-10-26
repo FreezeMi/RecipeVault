@@ -10,6 +10,7 @@ import { Notice, PageHeading, Spinner, buttonStyles } from './ui';
 import { RECIPE_CATEGORIES } from '../constants';
 import { Link, navigate, paths, useLocation, useScrollRestoration } from '../lib/router';
 import { useDocumentTitle } from '../lib/hooks';
+import { getMessages, tagLabel, useT } from '../lib/i18n';
 
 const SEARCH_DEBOUNCE_MS = 250;
 
@@ -61,6 +62,7 @@ export default function RecipeList() {
 
   const { authenticated } = useAuth();
   const toast = useToast();
+  const t = useT();
   useDocumentTitle();
 
   // --- Search input (debounced into the URL) ---
@@ -117,7 +119,7 @@ export default function RecipeList() {
       .catch((err: unknown) => {
         if (controller.signal.aborted) return;
         setRecipes(null);
-        setError(toErrorMessage(err, 'Unable to load recipes.'));
+        setError(toErrorMessage(err, getMessages().list.loadFailed));
       })
       .finally(() => {
         if (!controller.signal.aborted) setRefreshing(false);
@@ -143,7 +145,7 @@ export default function RecipeList() {
       }
     } catch (err) {
       replace(recipe); // roll back
-      toast.error(toErrorMessage(err, 'Failed to update favorite.'));
+      toast.error(toErrorMessage(err, t.errors.updateFavorite));
     } finally {
       setPendingFavorites(ids => {
         const next = new Set(ids);
@@ -154,16 +156,15 @@ export default function RecipeList() {
   };
 
   const count = recipes?.length ?? 0;
-  let subtitle = 'Browse, search and cook from your personal culinary collection.';
-  if (recipes && !hasFilters) subtitle = `${count} ${count === 1 ? 'recipe' : 'recipes'} in your vault.`;
+  const subtitle = recipes && !hasFilters ? t.list.count(count) : t.list.subtitle;
 
   return (
     <div className="space-y-8">
-      <PageHeading title="Your Recipes" subtitle={subtitle}>
+      <PageHeading title={t.list.title} subtitle={subtitle}>
         {authenticated && (
           <Link to={paths.new()} className={`${buttonStyles.primary} sm:hidden`}>
             <PlusIcon size={18} weight="bold" aria-hidden="true" />
-            New recipe
+            {t.common.newRecipe}
           </Link>
         )}
       </PageHeading>
@@ -179,8 +180,8 @@ export default function RecipeList() {
             type="search"
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
-            placeholder="Search by title, ingredient or tag…"
-            aria-label="Search recipes"
+            placeholder={t.list.searchPlaceholder}
+            aria-label={t.list.searchLabel}
             maxLength={100}
             className="w-full rounded-2xl border border-stone-200 bg-white py-3.5 pl-12 pr-24 text-stone-900 shadow-sm outline-none transition-[border-color,box-shadow] placeholder:text-stone-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/15 [&::-webkit-search-cancel-button]:hidden"
           />
@@ -194,7 +195,7 @@ export default function RecipeList() {
                   setFilters({ search: '' });
                 }}
                 className={buttonStyles.icon}
-                aria-label="Clear search"
+                aria-label={t.list.clearSearch}
               >
                 <XIcon size={16} weight="bold" aria-hidden="true" />
               </button>
@@ -204,7 +205,7 @@ export default function RecipeList() {
 
         <div
           role="group"
-          aria-label="Filter recipes"
+          aria-label={t.list.filterLabel}
           className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] md:mx-0 md:flex-wrap md:overflow-visible md:px-0"
         >
           <button
@@ -214,11 +215,11 @@ export default function RecipeList() {
             onClick={() => setFilters({ favorite: !favorite })}
           >
             <HeartIcon size={16} weight={favorite ? 'fill' : 'regular'} aria-hidden="true" />
-            Favorites
+            {t.list.favorites}
           </button>
           <span className="mx-1 w-px shrink-0 self-stretch bg-stone-200" aria-hidden="true" />
           <button type="button" aria-pressed={!tag} className={chipClass(!tag)} onClick={() => setFilters({ tag: '' })}>
-            All
+            {t.list.all}
           </button>
           {RECIPE_CATEGORIES.map(category => (
             <button
@@ -228,7 +229,7 @@ export default function RecipeList() {
               className={chipClass(tag === category)}
               onClick={() => setFilters({ tag: tag === category ? '' : category })}
             >
-              {category}
+              {tagLabel(category, t)}
             </button>
           ))}
         </div>
@@ -236,11 +237,9 @@ export default function RecipeList() {
 
       {hasFilters && recipes && recipes.length > 0 && (
         <div className="flex items-center justify-between text-sm text-stone-600">
-          <p aria-live="polite">
-            {count} {count === 1 ? 'result' : 'results'}
-          </p>
+          <p aria-live="polite">{t.list.results(count)}</p>
           <button type="button" onClick={clearFilters} className="font-medium text-brand-700 hover:text-brand-900">
-            Clear filters
+            {t.list.clearFilters}
           </button>
         </div>
       )}
@@ -255,7 +254,7 @@ export default function RecipeList() {
               className="inline-flex items-center gap-1.5 font-semibold text-red-800 hover:text-red-950"
             >
               <ArrowClockwiseIcon size={16} weight="bold" aria-hidden="true" />
-              Retry
+              {t.common.retry}
             </button>
           }
         >
@@ -266,7 +265,7 @@ export default function RecipeList() {
       {!error && recipes === null && (
         <>
           <p role="status" className="sr-only">
-            Loading recipes…
+            {t.list.loading}
           </p>
           <SkeletonGrid />
         </>
@@ -283,25 +282,25 @@ export default function RecipeList() {
           </div>
           {hasFilters ? (
             <>
-              <h2 className="font-display text-2xl font-semibold text-stone-900">No recipes found</h2>
-              <p className="mt-2 max-w-md text-stone-600">Try a different search term or remove some filters.</p>
+              <h2 className="font-display text-2xl font-semibold text-stone-900">{t.list.noResults}</h2>
+              <p className="mt-2 max-w-md text-stone-600">{t.list.noResultsHint}</p>
               <button type="button" onClick={clearFilters} className={`${buttonStyles.secondary} mt-6`}>
-                Clear all filters
+                {t.list.clearAllFilters}
               </button>
             </>
           ) : (
             <>
-              <h2 className="font-display text-2xl font-semibold text-stone-900">Your vault is empty</h2>
+              <h2 className="font-display text-2xl font-semibold text-stone-900">{t.list.empty}</h2>
               {authenticated ? (
                 <>
-                  <p className="mt-2 max-w-md text-stone-600">Add your first recipe to start your culinary collection.</p>
+                  <p className="mt-2 max-w-md text-stone-600">{t.list.emptyHint}</p>
                   <Link to={paths.new()} className={`${buttonStyles.primary} mt-6`}>
                     <PlusIcon size={18} weight="bold" aria-hidden="true" />
-                    Add your first recipe
+                    {t.list.addFirst}
                   </Link>
                 </>
               ) : (
-                <p className="mt-2 max-w-md text-stone-600">No recipes have been added yet. Check back soon!</p>
+                <p className="mt-2 max-w-md text-stone-600">{t.list.emptyVisitorHint}</p>
               )}
             </>
           )}

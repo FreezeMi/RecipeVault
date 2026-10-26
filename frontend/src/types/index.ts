@@ -1,7 +1,18 @@
+import type { Language } from '../lib/i18n';
+
 export interface Ingredient {
   quantity: string;
   unit: string;
   name: string;
+}
+
+/** The language-specific part of a recipe, parsed. Times, servings, tags and links are shared. */
+export interface RecipeText {
+  title: string;
+  description: string | null;
+  ingredients: Ingredient[];
+  instructions: string[];
+  notes: string | null;
 }
 
 /** A recipe as returned by the API. List-like fields are stored as JSON strings. */
@@ -18,24 +29,34 @@ export interface Recipe {
   ingredients: string; // JSON array of Ingredient
   instructions: string; // JSON array of strings
   notes: string | null;
+  /** Language of title, description, ingredients, instructions and notes. */
+  language: Language;
+  translations: string | null; // JSON object of RecipeText (lists as arrays) keyed by language
   isFavorite: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
-/** Payload sent to the API when creating or updating a recipe. */
-export interface RecipeInput {
+/** The language-specific part of a recipe as sent to the API. */
+export interface RecipeTextInput {
   title: string;
   description: string;
+  ingredients: Ingredient[];
+  instructions: string[];
+  notes: string;
+}
+
+/** Payload sent to the API when creating or updating a recipe. The text fields are in `language`. */
+export interface RecipeInput extends RecipeTextInput {
   tags: string[];
   prepTime: number | null;
   cookTime: number | null;
   servings: number | null;
   imageUrl: string;
   sourceUrl: string;
-  ingredients: Ingredient[];
-  instructions: string[];
-  notes: string;
+  language: Language;
+  /** Replaces the stored translations; an empty object removes them. */
+  translations: Partial<Record<Language, RecipeTextInput>>;
   isFavorite: boolean;
 }
 

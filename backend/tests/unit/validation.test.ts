@@ -147,6 +147,102 @@ test('only keeps createdAt for restores, and only valid past dates', () => {
   assert.equal(valid({ title: 'x', createdAt: '2999-01-01T00:00:00Z' }, 'lenient').createdAt, undefined);
 });
 
+const dutch = {
+  title: '  Pannenkoeken ',
+  description: 'Luchtig',
+  ingredients: [{ quantity: '2', unit: 'kopjes', name: 'bloem' }, { quantity: '', unit: '', name: ' ' }],
+  instructions: ['Mengen', '  ', 'Bakken'],
+  notes: '',
+};
+
+test('language and translations are left out when the payload does not mention them', () => {
+  // An update from a client that doesn't know about languages must not wipe stored translations.
+  const data = valid({ title: 'x' });
+  assert.equal('language' in data, false);
+  assert.equal('translations' in data, false);
+});
+
+test('language must be a supported language', () => {
+  assert.equal(valid({ title: 'x', language: 'nl' }).language, 'nl');
+  for (const language of ['fr', 'NL', '', null, 1]) {
+    assert.deepEqual(invalid({ title: 'x', language }), ['language must be one of: en, nl.'], `language: ${String(language)}`);
+  }
+  // A restored backup with an unknown language falls back to the database default.
+  assert.equal(valid({ title: 'x', language: 'fr' }, 'lenient').language, undefined);
+});
+
+test('translations are normalized like the recipe text and stored as JSON keyed by language', () => {
+  const data = valid({ title: 'Pancakes', language: 'en', translations: { nl: dutch } });
+  assert.deepEqual(JSON.parse(data.translations!), {
+    nl: {
+      title: 'Pannenkoeken',
+      description: 'Luchtig',
+      ingredients: [{ quantity: '2', unit: 'kopjes', name: 'bloem' }],
+      instructions: ['Mengen', 'Bakken'],
+      notes: null,
+    },
+  });
+});
+
+test('translations accept the JSON string returned by the API (backup format)', () => {
+  const stored = valid({ title: 'Pancakes', translations: { nl: dutch } }).translations!;
+  assert.equal(valid({ title: 'Pancakes', translations: stored }).translations, stored);
+});
+
+test("accepts the web editor's payload, including a Dutch original with an English translation", () => {
+  // Exactly what frontend/src/components/RecipeForm.tsx sends: empty strings for blank text fields.
+  const english = { title: 'Pancakes', description: '', ingredients: [{ quantity: '2', unit: '', name: 'eggs' }], instructions: ['Whisk'], notes: '' };
+  const data = valid({
+    title: 'Pannenkoeken',
+    description: '',
+    tags: ['Breakfast'],
+    prepTime: null,
+    cookTime: null,
+    servings: null,
+    imageUrl: '',
+    sourceUrl: '',
+    ingredients: [{ quantity: '2', unit: '', name: 'eieren' }],
+    instructions: ['Kloppen'],
+    notes: '',
+    language: 'nl',
+    translations: { en: english },
+    isFavorite: false,
+  });
+  assert.equal(data.language, 'nl');
+  assert.deepEqual(JSON.parse(data.translations!), { en: { ...english, description: null, notes: null } });
+});
+
+test('null or empty translations clear them', () => {
+  for (const translations of [null, '', {}]) {
+    assert.equal(valid({ title: 'x', translations }).translations, null, `translations: ${JSON.stringify(translations)}`);
+  }
+});
+
+test('rejects unusable translations in strict mode, naming the language', () => {
+  assert.deepEqual(invalid({ title: 'x', translations: 'not json' }), ['translations must be an object keyed by language.']);
+  assert.deepEqual(invalid({ title: 'x', translations: ['nl'] }), ['translations must be an object keyed by language.']);
+  assert.deepEqual(invalid({ title: 'x', translations: { fr: dutch } }), ['translations has unsupported languages: fr.']);
+  assert.deepEqual(invalid({ title: 'x', language: 'nl', translations: { nl: dutch } }), [
+    "translations cannot include the recipe's own language (nl).",
+  ]);
+  assert.deepEqual(invalid({ title: 'x', translations: { nl: { ...dutch, title: ' ' } } }), ['translations.nl: Title is required.']);
+  assert.deepEqual(invalid({ title: 'x', translations: { nl: 'Pannenkoeken' } }), ['translations.nl: must be an object.']);
+  assert.deepEqual(invalid({ title: 'x', translations: { nl: { ...dutch, title: 'a'.repeat(LIMITS.title + 1) } } }), [
+    `translations.nl: title must be at most ${LIMITS.title} characters.`,
+  ]);
+});
+
+test('drops unusable translations in lenient (restore) mode but keeps the recipe', () => {
+  const data = valid(
+    { title: 'x', language: 'en', translations: { en: dutch, fr: dutch, nl: { ...dutch, title: '' } } },
+    'lenient',
+  );
+  assert.equal(data.translations, null);
+
+  const repaired = valid({ title: 'x', translations: { nl: { ...dutch, title: 'a'.repeat(LIMITS.title + 1) } } }, 'lenient');
+  assert.equal(JSON.parse(repaired.translations!).nl.title.length, LIMITS.title);
+});
+
 test('parseId accepts only positive int32 strings', () => {
   assert.equal(parseId('42'), 42);
   for (const value of ['0', '-1', 'abc', '1.5', '1e3', '99999999999', '', undefined, 5]) {

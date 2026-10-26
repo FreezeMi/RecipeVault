@@ -6,6 +6,7 @@ import { api, authApi, toErrorMessage } from '../services/api';
 import type { DbStatus } from '../types';
 import { navigate, paths, useScrollRestoration } from '../lib/router';
 import { useDocumentTitle } from '../lib/hooks';
+import { localeFor, useLanguage, useT, type Messages } from '../lib/i18n';
 import { Notice, PageHeading, Spinner, buttonStyles, cardClass, inputClass, labelClass } from './ui';
 
 const MIN_PASSWORD_LENGTH = 12;
@@ -30,17 +31,19 @@ function Section({ icon, title, description, children }: Readonly<{ icon: ReactN
   );
 }
 
-const describeImport = ({ count, skipped = 0, invalid = 0 }: { count: number; skipped?: number; invalid?: number }) => {
-  const parts = [`Imported ${count} ${count === 1 ? 'recipe' : 'recipes'}.`];
-  if (skipped) parts.push(`Skipped ${skipped} already in your vault.`);
-  if (invalid) parts.push(`${invalid} invalid ${invalid === 1 ? 'entry was' : 'entries were'} ignored.`);
+const describeImport = ({ count, skipped = 0, invalid = 0 }: { count: number; skipped?: number; invalid?: number }, t: Messages) => {
+  const parts = [t.account.imported(count)];
+  if (skipped) parts.push(t.account.skipped(skipped));
+  if (invalid) parts.push(t.account.invalid(invalid));
   return parts.join(' ');
 };
 
 export default function Account() {
   const { user, clearSession } = useAuth();
   const toast = useToast();
-  useDocumentTitle('Account');
+  const t = useT();
+  const language = useLanguage();
+  useDocumentTitle(t.account.title);
   useScrollRestoration(true);
 
   // --- System status ---
@@ -78,9 +81,9 @@ export default function Account() {
       link.remove();
       // Revoke on the next tick so the download has started in every browser.
       setTimeout(() => URL.revokeObjectURL(url), 0);
-      setDataMessage({ text: `Downloaded a backup of ${recipes.length} ${recipes.length === 1 ? 'recipe' : 'recipes'}.`, tone: 'success' });
+      setDataMessage({ text: t.account.downloaded(recipes.length), tone: 'success' });
     } catch (err) {
-      setDataMessage({ text: toErrorMessage(err, 'Failed to download recipes.'), tone: 'error' });
+      setDataMessage({ text: toErrorMessage(err, t.account.downloadFailed), tone: 'error' });
     } finally {
       setDataBusy(null);
     }
@@ -93,7 +96,7 @@ export default function Account() {
 
     setDataMessage(null);
     if (file.size > MAX_BACKUP_BYTES) {
-      setDataMessage({ text: 'That file is too large (maximum 15 MB).', tone: 'error' });
+      setDataMessage({ text: t.account.fileTooLarge, tone: 'error' });
       return;
     }
 
@@ -103,15 +106,15 @@ export default function Account() {
       try {
         recipes = JSON.parse(await file.text());
       } catch {
-        throw new Error("That file isn't valid JSON. Choose a backup downloaded from Recipe Vault.");
+        throw new Error(t.account.invalidJson);
       }
       if (!Array.isArray(recipes)) {
-        throw new Error('This file is not a Recipe Vault backup (expected a list of recipes).');
+        throw new Error(t.account.notABackup);
       }
       const result = await api.uploadRecipes(recipes);
-      setDataMessage({ text: describeImport(result), tone: 'success' });
+      setDataMessage({ text: describeImport(result, t), tone: 'success' });
     } catch (err) {
-      setDataMessage({ text: toErrorMessage(err, 'Failed to import recipes.'), tone: 'error' });
+      setDataMessage({ text: toErrorMessage(err, t.errors.importRecipes), tone: 'error' });
     } finally {
       setDataBusy(null);
     }
@@ -129,11 +132,11 @@ export default function Account() {
     setPasswordMessage(null);
 
     if (newPassword.length < MIN_PASSWORD_LENGTH) {
-      setPasswordMessage({ text: `Your new password must be at least ${MIN_PASSWORD_LENGTH} characters.`, tone: 'error' });
+      setPasswordMessage({ text: t.account.passwordTooShort(MIN_PASSWORD_LENGTH), tone: 'error' });
       return;
     }
     if (newPassword !== confirmPassword) {
-      setPasswordMessage({ text: 'The new passwords do not match.', tone: 'error' });
+      setPasswordMessage({ text: t.account.passwordMismatch, tone: 'error' });
       return;
     }
 
@@ -142,10 +145,10 @@ export default function Account() {
       await authApi.changePassword(currentPassword, newPassword);
       // The server signed out every session, including this one.
       clearSession();
-      toast.success('Password changed. Please sign in with your new password.');
+      toast.success(t.account.passwordChanged);
       navigate(paths.login(), { replace: true });
     } catch (err) {
-      setPasswordMessage({ text: toErrorMessage(err, 'Failed to change password.'), tone: 'error' });
+      setPasswordMessage({ text: toErrorMessage(err, t.errors.changePassword), tone: 'error' });
       setChangingPassword(false);
     }
   };
@@ -153,31 +156,31 @@ export default function Account() {
   if (!user) return null;
 
   let statusDot = 'bg-stone-300';
-  let statusText = 'Checking…';
+  let statusText = t.account.status.checking;
   if (dbStatusError) {
-    statusText = 'Unavailable';
+    statusText = t.account.status.unavailable;
   } else if (dbStatus && !dbStatus.lastCheck) {
-    statusText = 'Not checked yet';
+    statusText = t.account.status.notChecked;
   } else if (dbStatus) {
     statusDot = dbStatus.isOkay ? 'bg-emerald-500' : 'bg-red-500';
-    statusText = dbStatus.isOkay ? 'Healthy' : 'Issue detected';
+    statusText = dbStatus.isOkay ? t.account.status.healthy : t.account.status.issue;
   }
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
-      <PageHeading title="Account" subtitle="Manage your sign-in, backups and system health." />
+      <PageHeading title={t.account.title} subtitle={t.account.subtitle} />
 
-      <Section icon={<UserCircleIcon size={24} weight="duotone" />} title="Profile">
+      <Section icon={<UserCircleIcon size={24} weight="duotone" />} title={t.account.profile}>
         <dl>
-          <dt className="text-sm font-medium text-stone-500">Signed in as</dt>
+          <dt className="text-sm font-medium text-stone-500">{t.account.signedInAs}</dt>
           <dd className="mt-0.5 break-all font-medium text-stone-900">{user.email}</dd>
         </dl>
       </Section>
 
       <Section
         icon={<DownloadSimpleIcon size={24} weight="duotone" />}
-        title="Backup & restore"
-        description="Download every recipe as a JSON file, or restore from a backup. Restoring only adds recipes — titles already in your vault are skipped, nothing is overwritten."
+        title={t.account.backup}
+        description={t.account.backupText}
       >
         {dataMessage && (
           <div className="mb-5">
@@ -187,7 +190,7 @@ export default function Account() {
         <div className="flex flex-col gap-3 sm:flex-row">
           <button type="button" onClick={handleDownload} disabled={dataBusy !== null} className={`${buttonStyles.primary} flex-1`}>
             {dataBusy === 'download' ? <Spinner className="size-5" /> : <DownloadSimpleIcon size={20} weight="bold" aria-hidden="true" />}
-            {dataBusy === 'download' ? 'Preparing…' : 'Download backup'}
+            {dataBusy === 'download' ? t.account.preparing : t.account.download}
           </button>
           <button
             type="button"
@@ -196,7 +199,7 @@ export default function Account() {
             className={`${buttonStyles.secondary} flex-1`}
           >
             {dataBusy === 'upload' ? <Spinner className="size-5" /> : <UploadSimpleIcon size={20} weight="bold" aria-hidden="true" />}
-            {dataBusy === 'upload' ? 'Importing…' : 'Restore from backup'}
+            {dataBusy === 'upload' ? t.account.importing : t.account.restore}
           </button>
           <input
             ref={fileInputRef}
@@ -212,8 +215,8 @@ export default function Account() {
 
       <Section
         icon={<ShieldCheckIcon size={24} weight="duotone" />}
-        title="Change password"
-        description="Changing your password signs you out on every device."
+        title={t.account.changePassword}
+        description={t.account.changePasswordText}
       >
         {passwordMessage && (
           <div className="mb-5">
@@ -225,7 +228,7 @@ export default function Account() {
           <input type="text" name="username" autoComplete="username" value={user.email} readOnly hidden />
           <div>
             <label htmlFor="currentPassword" className={labelClass}>
-              Current password
+              {t.account.currentPassword}
             </label>
             <input
               id="currentPassword"
@@ -240,7 +243,7 @@ export default function Account() {
           <div className="grid gap-5 sm:grid-cols-2">
             <div>
               <label htmlFor="newPassword" className={labelClass}>
-                New password
+                {t.account.newPassword}
               </label>
               <input
                 id="newPassword"
@@ -254,12 +257,12 @@ export default function Account() {
                 className={inputClass}
               />
               <p id="newPassword-hint" className="mt-1.5 text-sm text-stone-500">
-                At least {MIN_PASSWORD_LENGTH} characters.
+                {t.account.passwordHint(MIN_PASSWORD_LENGTH)}
               </p>
             </div>
             <div>
               <label htmlFor="confirmPassword" className={labelClass}>
-                Confirm new password
+                {t.account.confirmPassword}
               </label>
               <input
                 id="confirmPassword"
@@ -274,28 +277,28 @@ export default function Account() {
           </div>
           <button type="submit" disabled={changingPassword} className={buttonStyles.primary}>
             {changingPassword && <Spinner className="size-5" />}
-            {changingPassword ? 'Changing…' : 'Change password'}
+            {changingPassword ? t.account.changing : t.account.changePassword}
           </button>
         </form>
       </Section>
 
       <Section
         icon={<DatabaseIcon size={24} weight="duotone" />}
-        title="System status"
-        description="The server checks the database connection every few days."
+        title={t.account.systemStatus}
+        description={t.account.systemStatusText}
       >
         <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="rounded-2xl bg-stone-50 p-4">
-            <dt className="text-sm font-medium text-stone-500">Database</dt>
+            <dt className="text-sm font-medium text-stone-500">{t.account.database}</dt>
             <dd className="mt-1 flex items-center gap-2 font-semibold text-stone-900">
               <span className={`size-2.5 rounded-full ${statusDot}`} aria-hidden="true" />
               {statusText}
             </dd>
           </div>
           <div className="rounded-2xl bg-stone-50 p-4">
-            <dt className="text-sm font-medium text-stone-500">Last check</dt>
+            <dt className="text-sm font-medium text-stone-500">{t.account.lastCheck}</dt>
             <dd className="mt-1 font-semibold text-stone-900">
-              {dbStatus?.lastCheck ? new Date(dbStatus.lastCheck).toLocaleString() : '—'}
+              {dbStatus?.lastCheck ? new Date(dbStatus.lastCheck).toLocaleString(localeFor(language)) : '—'}
             </dd>
           </div>
         </dl>

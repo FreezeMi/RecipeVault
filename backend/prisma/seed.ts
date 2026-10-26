@@ -36,6 +36,35 @@ async function main() {
         'Serve over steamed rice garnished with cilantro and chopped roasted peanuts.'
       ]),
       notes: 'Recipe by Kimberly Killebrew. Highly recommended to use homemade chili powder.',
+      translations: JSON.stringify({
+        nl: {
+          title: 'Thaise pindakip',
+          description: 'Deze Thaise pindakip zit bomvol smaak! Snel en makkelijk te maken en heerlijk vullend.',
+          ingredients: [
+            { quantity: '2', unit: 'el', name: 'bakolie' },
+            { quantity: '1', unit: '', name: 'gele ui, gesnipperd' },
+            { quantity: '2', unit: 'teentjes', name: 'knoflook, fijngehakt' },
+            { quantity: '2,5', unit: 'cm', name: 'verse gember, fijngehakt' },
+            { quantity: '455', unit: 'g', name: 'kipfilet, in hapklare stukjes' },
+            { quantity: '2', unit: 'el', name: 'zoete chilisaus' },
+            { quantity: '2', unit: 'el', name: 'tomatensaus of ketchup' },
+            { quantity: '3', unit: 'el', name: 'pindakaas met stukjes noot' },
+            { quantity: '1', unit: 'el', name: 'chilipoeder' },
+            { quantity: '1', unit: 'tl', name: 'donkerbruine suiker (optioneel)' },
+            { quantity: '396', unit: 'g', name: 'ongezoete kokosmelk' },
+            { quantity: '1', unit: 'tl', name: 'zout' },
+            { quantity: '', unit: '', name: 'Gehakte verse koriander, voor de garnering' },
+            { quantity: '', unit: '', name: "Gehakte geroosterde pinda's, voor de garnering" },
+          ],
+          instructions: [
+            'Verhit de olie in een koekenpan op middelhoog vuur en bak de ui in 5 minuten zacht en glazig. Voeg de knoflook en gember toe en bak nog 2 minuten. Voeg de kip toe en bak 3-4 minuten.',
+            'Voeg de zoete chilisaus, tomatensaus of ketchup, chilipoeder, pindakaas en suiker toe en roer alles goed door.',
+            'Voeg de kokosmelk en het zout toe en breng aan de kook. Zet het vuur middellaag, leg de deksel op de pan en laat 20 minuten sudderen; roer af en toe. Is de saus te dun naar je zin? Los dan een eetlepel maïzena op in 2 eetlepels water, roer het door de saus en laat nog een minuut sudderen tot de saus is ingedikt. Breng op smaak met zout.',
+            "Serveer met gestoomde rijst en garneer met koriander en gehakte geroosterde pinda's.",
+          ],
+          notes: 'Recept van Kimberly Killebrew. Zelfgemaakt chilipoeder wordt sterk aanbevolen.',
+        },
+      }),
     },
     {
       title: 'Easy 15-Minute Sweet and Sour Chicken',
@@ -73,6 +102,39 @@ async function main() {
         'Optionally garnish with green onions, sesame seeds, and serve immediately.'
       ]),
       notes: 'Recipe by Averie Sunshine.',
+      translations: JSON.stringify({
+        nl: {
+          title: 'Snelle zoetzure kip in 15 minuten',
+          description: 'Sneller, lekkerder, gezonder en beter dan afhaal! Perfect voor drukke doordeweekse avonden als je snel wilt eten.',
+          ingredients: [
+            { quantity: '150', unit: 'g', name: 'kristalsuiker' },
+            { quantity: '120', unit: 'ml', name: 'appelazijn' },
+            { quantity: '60', unit: 'ml', name: 'ketchup' },
+            { quantity: '2', unit: 'el', name: 'sojasaus met minder zout' },
+            { quantity: '1', unit: 'el', name: 'sesamolie' },
+            { quantity: '15', unit: 'g', name: 'lichtbruine basterdsuiker' },
+            { quantity: '3', unit: 'teentjes', name: 'knoflook, fijngehakt' },
+            { quantity: '2', unit: 'el', name: 'koud water' },
+            { quantity: '1', unit: 'el', name: 'maïzena' },
+            { quantity: '570', unit: 'g', name: 'kipfilet (in stukjes van 2,5 cm)' },
+            { quantity: '3', unit: 'el', name: 'maïzena' },
+            { quantity: '', unit: '', name: 'zout en peper (naar smaak)' },
+            { quantity: '3-4', unit: 'el', name: 'olijfolie' },
+            { quantity: '2', unit: '', name: 'lente-uitjes (in ringetjes)' },
+            { quantity: '1', unit: 'el', name: 'sesamzaad (optioneel)' },
+          ],
+          instructions: [
+            'Doe alle ingrediënten voor de saus behalve het water en de maïzena in een middelgrote steelpan, klop door elkaar en breng aan de kook op middelhoog vuur.',
+            'Meng het water en de maïzena in een kommetje.',
+            'Voeg het maïzenamengsel toe aan de steelpan, zet het vuur laag en laat de saus ongeveer 5 minuten sudderen terwijl je de kip bakt; klop af en toe door.',
+            'Doe de kip, de maïzena en zout en peper naar smaak in een grote vershoudzak, sluit hem en schud tot de kip gelijkmatig bedekt is.',
+            'Verhit 3 tot 4 eetlepels olijfolie in een grote koekenpan, voeg de kip toe en bak 5 tot 7 minuten op middelhoog vuur, tot de kip gaar is. Roer en keer af en toe zodat alles gelijkmatig gaar wordt.',
+            'Zet het vuur laag zodra de kip gaar is, voeg de saus toe, roer tot alles bedekt is en laat een minuut of twee sudderen.',
+            'Garneer eventueel met lente-ui en sesamzaad en serveer direct.',
+          ],
+          notes: 'Recept van Averie Sunshine.',
+        },
+      }),
     }
   ];
 
