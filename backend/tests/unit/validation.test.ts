@@ -189,6 +189,29 @@ test('translations accept the JSON string returned by the API (backup format)', 
   assert.equal(valid({ title: 'Pancakes', translations: stored }).translations, stored);
 });
 
+test("accepts the web editor's payload, including a Dutch original with an English translation", () => {
+  // Exactly what frontend/src/components/RecipeForm.tsx sends: empty strings for blank text fields.
+  const english = { title: 'Pancakes', description: '', ingredients: [{ quantity: '2', unit: '', name: 'eggs' }], instructions: ['Whisk'], notes: '' };
+  const data = valid({
+    title: 'Pannenkoeken',
+    description: '',
+    tags: ['Breakfast'],
+    prepTime: null,
+    cookTime: null,
+    servings: null,
+    imageUrl: '',
+    sourceUrl: '',
+    ingredients: [{ quantity: '2', unit: '', name: 'eieren' }],
+    instructions: ['Kloppen'],
+    notes: '',
+    language: 'nl',
+    translations: { en: english },
+    isFavorite: false,
+  });
+  assert.equal(data.language, 'nl');
+  assert.deepEqual(JSON.parse(data.translations!), { en: { ...english, description: null, notes: null } });
+});
+
 test('null or empty translations clear them', () => {
   for (const translations of [null, '', {}]) {
     assert.equal(valid({ title: 'x', translations }).translations, null, `translations: ${JSON.stringify(translations)}`);

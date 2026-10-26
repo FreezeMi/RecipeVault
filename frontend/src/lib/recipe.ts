@@ -68,26 +68,27 @@ export interface LocalizedRecipe {
 
 type RecipeContent = Pick<Recipe, 'title' | 'description' | 'ingredients' | 'instructions' | 'notes' | 'language' | 'translations'>;
 
+/** The language the recipe was written in. Responses from before recipes had a language are English. */
+export const originalLanguage = (recipe: Pick<Recipe, 'language'>): Language => (isLanguage(recipe.language) ? recipe.language : 'en');
+
+/** The recipe's own text, in its original language. */
+export const originalText = (recipe: RecipeContent): RecipeText => ({
+  title: recipe.title,
+  description: recipe.description,
+  ingredients: parseIngredients(recipe.ingredients),
+  instructions: parseInstructions(recipe.instructions),
+  notes: recipe.notes,
+});
+
 /**
  * The recipe's text in `language`: its translation, or the original when the recipe was written
  * in that language or hasn't been translated yet. Whole recipes are shown in one language, never mixed.
  */
 export function localizeRecipe(recipe: RecipeContent, language: Language): LocalizedRecipe {
-  // Responses from before recipes had a language are English.
-  const original = isLanguage(recipe.language) ? recipe.language : 'en';
+  const original = originalLanguage(recipe);
   const translation = language === original ? undefined : parseTranslations(recipe.translations)[language];
   if (translation) return { text: translation, language, isFallback: false };
-  return {
-    text: {
-      title: recipe.title,
-      description: recipe.description,
-      ingredients: parseIngredients(recipe.ingredients),
-      instructions: parseInstructions(recipe.instructions),
-      notes: recipe.notes,
-    },
-    language: original,
-    isFallback: language !== original,
-  };
+  return { text: originalText(recipe), language: original, isFallback: language !== original };
 }
 
 /** Total of prep + cook time, or null when neither is known. */

@@ -108,8 +108,164 @@ describe('new recipe', () => {
       ingredients: [{ quantity: '2', unit: '', name: 'eggs' }],
       instructions: ['Whisk'],
       notes: '',
+      language: 'en',
+      translations: {},
       isFavorite: false,
     });
+  });
+});
+
+describe('translations', () => {
+  const dutch = {
+    title: 'Soep',
+    description: 'Warm',
+    ingredients: [{ quantity: '1', unit: 'l', name: 'bouillon' }],
+    instructions: ['Koken', 'Opdienen'],
+    notes: null,
+  };
+  const translatedRecipe = () => savedRecipe({ translations: JSON.stringify({ nl: dutch }) });
+  const languageButton = (name: RegExp) => screen.getByRole('button', { name });
+
+  const fillNewRecipe = () => {
+    fireEvent.change(screen.getByLabelText(/Title/), { target: { value: 'Pancakes' } });
+    fireEvent.change(screen.getByLabelText('Ingredient 1 quantity'), { target: { value: '2' } });
+    fireEvent.change(screen.getByLabelText('Ingredient 1 name'), { target: { value: 'eggs' } });
+    fireEvent.change(screen.getByLabelText('Step 1'), { target: { value: 'Whisk' } });
+  };
+
+  test('a new translation starts as a copy of the original and is saved alongside it', async () => {
+    vi.mocked(api.createRecipe).mockResolvedValueOnce(savedRecipe({ id: 42 }));
+    renderForm();
+    fillNewRecipe();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Dutch translation' }));
+
+    expect(languageButton(/^Dutch/)).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText(/Title/)).toHaveValue('Pancakes');
+    expect(screen.getByLabelText(/Title/)).toHaveAttribute('lang', 'nl');
+    expect(screen.getByText(/still a copy of the English text/)).toBeInTheDocument();
+    // Shared fields are only edited with the original.
+    expect(screen.queryByLabelText('Prep (min)')).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/Title/), { target: { value: 'Pannenkoeken' } });
+    fireEvent.change(screen.getByLabelText('Ingredient 1 name'), { target: { value: 'eieren' } });
+    fireEvent.change(screen.getByLabelText('Step 1'), { target: { value: 'Kloppen' } });
+    expect(screen.queryByText(/still a copy/)).not.toBeInTheDocument();
+
+    // The original is untouched.
+    fireEvent.click(languageButton(/^English/));
+    expect(screen.getByLabelText(/Title/)).toHaveValue('Pancakes');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save recipe' }));
+    await waitFor(() => expect(api.createRecipe).toHaveBeenCalled());
+    const payload = vi.mocked(api.createRecipe).mock.calls[0]![0];
+    expect(payload).toMatchObject({ title: 'Pancakes', language: 'en' });
+    expect(payload.translations).toEqual({
+      nl: { title: 'Pannenkoeken', description: '', ingredients: [{ quantity: '2', unit: '', name: 'eieren' }], instructions: ['Kloppen'], notes: '' },
+    });
+  });
+
+  test('editing loads the translation and saving keeps it', async () => {
+    vi.mocked(api.getRecipe).mockResolvedValueOnce(translatedRecipe());
+    vi.mocked(api.updateRecipe).mockResolvedValueOnce(translatedRecipe());
+    renderForm(7);
+
+    await screen.findByLabelText(/Title/);
+    expect(languageButton(/^English/)).toHaveTextContent('original');
+    fireEvent.click(languageButton(/^Dutch/));
+    expect(screen.getByLabelText(/Title/)).toHaveValue('Soep');
+    expect(screen.getByLabelText('Step 2')).toHaveValue('Opdienen');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(api.updateRecipe).toHaveBeenCalled());
+    const [, payload] = vi.mocked(api.updateRecipe).mock.calls[0]!;
+    expect(payload.title).toBe('Soup');
+    expect(payload.translations.nl).toMatchObject({ title: 'Soep', instructions: ['Koken', 'Opdienen'] });
+  });
+
+  test('saving shows the language that has the first error', async () => {
+    vi.mocked(api.getRecipe).mockResolvedValueOnce(translatedRecipe());
+    renderForm(7);
+    await screen.findByLabelText(/Title/);
+
+    fireEvent.click(languageButton(/^Dutch/));
+    fireEvent.change(screen.getByLabelText(/Title/), { target: { value: ' ' } });
+    fireEvent.click(languageButton(/^English/));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(languageButton(/^Dutch/)).toHaveAttribute('aria-pressed', 'true');
+    expect(languageButton(/^Dutch/)).toHaveAccessibleName(/has errors/);
+    expect(screen.getByText('Give your recipe a title.')).toBeInTheDocument();
+    expect(document.activeElement).toBe(screen.getByLabelText(/Title/));
+    expect(api.updateRecipe).not.toHaveBeenCalled();
+  });
+
+  test('a translation can be removed', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValueOnce(true);
+    vi.mocked(api.getRecipe).mockResolvedValueOnce(translatedRecipe());
+    vi.mocked(api.updateRecipe).mockResolvedValueOnce(savedRecipe());
+    renderForm(7);
+    await screen.findByLabelText(/Title/);
+
+    fireEvent.click(languageButton(/^Dutch/));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Dutch translation' }));
+
+    expect(languageButton(/^English/)).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Add Dutch translation' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(api.updateRecipe).toHaveBeenCalled());
+    expect(vi.mocked(api.updateRecipe).mock.calls[0]![1].translations).toEqual({});
+  });
+
+  test('changing the original language relabels the text, or swaps it with an existing translation', async () => {
+    vi.mocked(api.createRecipe).mockResolvedValueOnce(savedRecipe({ id: 42 }));
+    renderForm();
+    fillNewRecipe();
+    fireEvent.change(screen.getByLabelText('Original language'), { target: { value: 'nl' } });
+
+    expect(languageButton(/^Dutch/)).toHaveTextContent('original');
+    expect(screen.getByLabelText(/Title/)).toHaveValue('Pancakes');
+    fireEvent.click(screen.getByRole('button', { name: 'Save recipe' }));
+    await waitFor(() => expect(api.createRecipe).toHaveBeenCalled());
+    expect(vi.mocked(api.createRecipe).mock.calls[0]![0]).toMatchObject({ title: 'Pancakes', language: 'nl', translations: {} });
+  });
+
+  test('the Dutch translation can become the original', async () => {
+    vi.mocked(api.getRecipe).mockResolvedValueOnce(translatedRecipe());
+    vi.mocked(api.updateRecipe).mockResolvedValueOnce(savedRecipe());
+    renderForm(7);
+    await screen.findByLabelText(/Title/);
+
+    fireEvent.change(screen.getByLabelText('Original language'), { target: { value: 'nl' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => expect(api.updateRecipe).toHaveBeenCalled());
+    const [, payload] = vi.mocked(api.updateRecipe).mock.calls[0]!;
+    expect(payload).toMatchObject({ title: 'Soep', language: 'nl' });
+    expect(payload.translations.en).toMatchObject({ title: 'Soup', instructions: ['Boil', 'Serve'] });
+  });
+
+  test('changing only the original of a translated recipe suggests reviewing the translation', async () => {
+    vi.mocked(api.getRecipe).mockResolvedValueOnce(translatedRecipe());
+    renderForm(7);
+    await screen.findByLabelText(/Title/);
+    const hint = /Check whether the translation needs the same change/;
+    expect(screen.queryByText(hint)).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/Title/), { target: { value: 'Tomato soup' } });
+    expect(screen.getByText(hint)).toBeInTheDocument();
+
+    fireEvent.click(languageButton(/^Dutch/));
+    fireEvent.change(screen.getByLabelText(/Title/), { target: { value: 'Tomatensoep' } });
+    expect(screen.queryByText(hint)).not.toBeInTheDocument();
+  });
+
+  test('a new recipe starts in the interface language', () => {
+    setLanguage('nl');
+    renderForm();
+    expect(screen.getByLabelText('Oorspronkelijke taal')).toHaveValue('nl');
+    expect(screen.getByRole('button', { name: /^Nederlands/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Vertaling in het Engels toevoegen' })).toBeInTheDocument();
   });
 });
 
@@ -119,7 +275,7 @@ describe('in Dutch', () => {
     vi.mocked(api.createRecipe).mockResolvedValueOnce(savedRecipe({ id: 42 }));
     renderForm();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Recept opslaan' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Opslaan' }));
     expect(screen.getByText('Geef je recept een titel.')).toBeInTheDocument();
     expect(screen.getByText('Voeg minstens één ingrediënt toe.')).toBeInTheDocument();
 
@@ -127,7 +283,7 @@ describe('in Dutch', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Ontbijt' }));
     fireEvent.change(screen.getByLabelText('Naam ingrediënt 1'), { target: { value: 'eieren' } });
     fireEvent.change(screen.getByLabelText('Stap 1'), { target: { value: 'Kloppen' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Recept opslaan' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Opslaan' }));
 
     await waitFor(() => expect(api.createRecipe).toHaveBeenCalled());
     expect(vi.mocked(api.createRecipe).mock.calls[0]![0].tags).toEqual(['Breakfast']);

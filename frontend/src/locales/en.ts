@@ -170,6 +170,18 @@ export const en = {
     extras: 'Notes and favorite',
     notesPlaceholder: 'Tips, substitutions, serving suggestions…',
     markFavorite: 'Mark as favorite',
+    editingLanguage: 'Edit the text in',
+    original: 'original',
+    hasErrors: 'has errors',
+    addTranslation: (language: string) => `Add ${language} translation`,
+    removeTranslation: (language: string) => `Remove ${language} translation`,
+    confirmRemoveTranslation: (language: string) => `Remove the ${language} translation?`,
+    originalLanguage: 'Original language',
+    sharedFieldsHint: (original: string) =>
+      `Photo, tags, times, servings and links are shared by all languages; you edit them with the ${original} text.`,
+    copiedHint: (original: string) => `This is still a copy of the ${original} text. Replace it with the translation.`,
+    reviewTranslations: (original: string) =>
+      `You changed the ${original} text. Check whether the translation needs the same change.`,
     saving: 'Saving…',
     saveChanges: 'Save changes',
     saveRecipe: 'Save recipe',
