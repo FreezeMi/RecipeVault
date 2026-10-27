@@ -7,14 +7,20 @@ import type { DbStatus } from '../types';
 import { navigate, paths, useScrollRestoration } from '../lib/router';
 import { useDocumentTitle } from '../lib/hooks';
 import { localeFor, useLanguage, useT, type Messages } from '../lib/i18n';
-import { Notice, PageHeading, Spinner, buttonStyles, cardClass, inputClass, labelClass } from './ui';
+import { Notice, PageHeading, Spinner, StableText, buttonStyles, cardClass, inputClass, labelClass } from './ui';
 
 const MIN_PASSWORD_LENGTH = 12;
 const MAX_BACKUP_BYTES = 15 * 1024 * 1024; // matches the API's upload body limit
 
 type Message = { text: string; tone: 'error' | 'success' } | null;
 
-function Section({ icon, title, description, children }: Readonly<{ icon: ReactNode; title: string; description?: string; children: ReactNode }>) {
+// The description keeps the height of its longest translation, so a block doesn't grow or shrink when switching language.
+function Section({
+  icon,
+  title,
+  description,
+  children,
+}: Readonly<{ icon: ReactNode; title: string; description?: (t: Messages) => string; children: ReactNode }>) {
   return (
     <section className={`${cardClass} p-6 md:p-8`}>
       <div className="mb-6 flex items-start gap-4">
@@ -23,7 +29,11 @@ function Section({ icon, title, description, children }: Readonly<{ icon: ReactN
         </span>
         <div>
           <h2 className="font-display text-xl font-semibold text-stone-900">{title}</h2>
-          {description && <p className="mt-1 text-sm text-stone-600">{description}</p>}
+          {description && (
+            <p className="mt-1 text-sm text-stone-600">
+              <StableText pick={description} align="start" wrap />
+            </p>
+          )}
         </div>
       </div>
       {children}
@@ -168,7 +178,7 @@ export default function Account() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
-      <PageHeading title={t.account.title} subtitle={t.account.subtitle} />
+      <PageHeading title={t.account.title} subtitle={<StableText pick={t => t.account.subtitle} align="start" wrap />} />
 
       <Section icon={<UserCircleIcon size={24} weight="duotone" />} title={t.account.profile}>
         <dl>
@@ -180,7 +190,7 @@ export default function Account() {
       <Section
         icon={<DownloadSimpleIcon size={24} weight="duotone" />}
         title={t.account.backup}
-        description={t.account.backupText}
+        description={t => t.account.backupText}
       >
         {dataMessage && (
           <div className="mb-5">
@@ -216,7 +226,7 @@ export default function Account() {
       <Section
         icon={<ShieldCheckIcon size={24} weight="duotone" />}
         title={t.account.changePassword}
-        description={t.account.changePasswordText}
+        description={t => t.account.changePasswordText}
       >
         {passwordMessage && (
           <div className="mb-5">
@@ -276,8 +286,10 @@ export default function Account() {
             </div>
           </div>
           <button type="submit" disabled={changingPassword} className={buttonStyles.primary}>
-            {changingPassword && <Spinner className="size-5" />}
-            {changingPassword ? t.account.changing : t.account.changePassword}
+            <StableText
+              pick={t => (changingPassword ? t.account.changing : t.account.changePassword)}
+              icon={changingPassword && <Spinner className="size-5" />}
+            />
           </button>
         </form>
       </Section>
@@ -285,7 +297,7 @@ export default function Account() {
       <Section
         icon={<DatabaseIcon size={24} weight="duotone" />}
         title={t.account.systemStatus}
-        description={t.account.systemStatusText}
+        description={t => t.account.systemStatusText}
       >
         <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="rounded-2xl bg-stone-50 p-4">

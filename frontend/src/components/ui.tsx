@@ -30,7 +30,10 @@ interface ReservedTextProps {
   /** Repeated in every layer, so icon and text stay centered together. */
   icon?: ReactNode;
   align?: 'center' | 'start';
-  /** Lets text that may not fit (e.g. one with a hostname) wrap; every layer is then as tall as the tallest. */
+  /**
+   * For text that may need more than one line (a description, a link with a hostname): it wraps, is
+   * laid out as a top-aligned block, and keeps the height of the alternative that takes the most lines.
+   */
   wrap?: boolean;
 }
 
@@ -41,11 +44,11 @@ interface ReservedTextProps {
  * alternative that wrapped would make the visible one two lines tall. Layers inherit the parent's gap.
  */
 export function ReservedText({ text, alternatives, icon, align = 'center', wrap = false }: Readonly<ReservedTextProps>) {
-  const layer = 'col-start-1 row-start-1 inline-flex items-center [gap:inherit]';
+  const layer = `col-start-1 row-start-1 inline-flex [gap:inherit] ${wrap ? 'items-start' : 'items-center'}`;
   const others = [...new Set(alternatives)].filter(other => other !== text);
   return (
     <span
-      className={`inline-grid [gap:inherit] ${wrap ? '' : 'whitespace-nowrap'} ${align === 'start' ? 'justify-items-start' : 'justify-items-center'}`}
+      className={`[gap:inherit] ${wrap ? 'grid' : 'inline-grid whitespace-nowrap'} ${align === 'start' ? 'justify-items-start' : 'justify-items-center'}`}
     >
       <span className={layer}>
         {icon}
