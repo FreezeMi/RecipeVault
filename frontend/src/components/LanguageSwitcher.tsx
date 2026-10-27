@@ -1,9 +1,13 @@
 import { LANGUAGES, LANGUAGE_NAMES, setLanguage, useLanguage, useT } from '../lib/i18n';
+import { ReservedText } from './ui';
+
+const CODES = LANGUAGES.map(code => code.toUpperCase());
 
 /**
  * EN | NL toggle. Switching re-renders in place, so the page, filters and scroll position stay put.
  * Below the md breakpoint only the other language is shown ("NL" while in English), the usual
  * convention on bilingual sites; it keeps the signed-in header on one line from 360px up.
+ * Both codes take the same room, so that one button doesn't change size when it swaps.
  */
 export default function LanguageSwitcher() {
   const language = useLanguage();
@@ -25,7 +29,7 @@ export default function LanguageSwitcher() {
               active ? 'bg-stone-900 text-white max-md:hidden' : 'text-stone-600 hover:bg-stone-900/5 hover:text-stone-900'
             }`}
           >
-            {code.toUpperCase()}
+            <ReservedText text={code.toUpperCase()} alternatives={CODES} />
           </button>
         );
       })}

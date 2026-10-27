@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { ArrowLeftIcon, CheckCircleIcon, WarningCircleIcon, InfoIcon } from '@phosphor-icons/react';
 import { Link } from '../lib/router';
+import { LANGUAGES, messagesFor, useT, type Messages } from '../lib/i18n';
 
 // Shared visual primitives so every screen uses the same buttons, inputs, cards and notices.
 
@@ -21,6 +22,50 @@ export const inputClass =
 export const labelClass = 'mb-1.5 block text-sm font-semibold text-stone-700';
 
 export const cardClass = 'rounded-3xl border border-stone-200/80 bg-white shadow-sm shadow-stone-900/[0.03]';
+
+interface ReservedTextProps {
+  text: string;
+  /** Texts that may replace `text` in this spot; the widest one sets the size. */
+  alternatives: readonly string[];
+  /** Repeated in every layer, so icon and text stay centered together. */
+  icon?: ReactNode;
+  align?: 'center' | 'start';
+  /** Lets text that may not fit (e.g. one with a hostname) wrap; every layer is then as tall as the tallest. */
+  wrap?: boolean;
+}
+
+/**
+ * Shows `text` in the room of the widest of `alternatives`, which are stacked in the same grid cell,
+ * invisible and hidden from assistive technology. Swapping the text then never resizes the control
+ * it's in or moves whatever sits next to it. Labels don't wrap unless `wrap` is set: a hidden
+ * alternative that wrapped would make the visible one two lines tall. Layers inherit the parent's gap.
+ */
+export function ReservedText({ text, alternatives, icon, align = 'center', wrap = false }: Readonly<ReservedTextProps>) {
+  const layer = 'col-start-1 row-start-1 inline-flex items-center [gap:inherit]';
+  const others = [...new Set(alternatives)].filter(other => other !== text);
+  return (
+    <span
+      className={`inline-grid [gap:inherit] ${wrap ? '' : 'whitespace-nowrap'} ${align === 'start' ? 'justify-items-start' : 'justify-items-center'}`}
+    >
+      <span className={layer}>
+        {icon}
+        {text}
+      </span>
+      {others.map(other => (
+        <span key={other} className={`${layer} invisible`} aria-hidden="true">
+          {icon}
+          {other}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** Interface text sized to its longest translation, so switching language leaves the layout in place. */
+export function StableText({ pick, ...props }: Readonly<{ pick: (t: Messages) => string } & Omit<ReservedTextProps, 'text' | 'alternatives'>>) {
+  const t = useT();
+  return <ReservedText text={pick(t)} alternatives={LANGUAGES.map(language => pick(messagesFor(language)))} {...props} />;
+}
 
 export function Spinner({ className = 'size-5' }: { className?: string }) {
   return (

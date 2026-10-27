@@ -7,7 +7,7 @@ import Login from './components/Login';
 import LanguageSwitcher from './components/LanguageSwitcher';
 import { useAuth } from './components/AuthContext';
 import { useToast } from './components/Toast';
-import { PageLoader, buttonStyles } from './components/ui';
+import { PageLoader, StableText, buttonStyles } from './components/ui';
 import { Link, navigate, parseRoute, paths, useLocation, type Route } from './lib/router';
 import { useDocumentTitle } from './lib/hooks';
 import { useT } from './lib/i18n';
@@ -113,6 +113,8 @@ function App() {
             <span className="whitespace-nowrap font-display text-xl font-semibold tracking-tight text-stone-900 md:text-2xl">Recipe Vault</span>
           </Link>
 
+          {/* The nav is right-aligned, so every label in it keeps the room of its longest
+              translation; otherwise switching language would slide the switcher from under the pointer. */}
           <nav aria-label={t.nav.main} className="flex items-center gap-1 sm:gap-2">
             <LanguageSwitcher />
             {authenticated ? (
@@ -124,8 +126,7 @@ function App() {
                     className={`${buttonStyles.primary} whitespace-nowrap px-4! py-2! text-sm`}
                     aria-current={route.name === 'new' ? 'page' : undefined}
                   >
-                    <PlusIcon size={16} weight="bold" aria-hidden="true" />
-                    {t.common.newRecipe}
+                    <StableText pick={t => t.common.newRecipe} icon={<PlusIcon size={16} weight="bold" aria-hidden="true" />} />
                   </Link>
                 </span>
                 <Link
@@ -134,11 +135,15 @@ function App() {
                   aria-current={route.name === 'account' ? 'page' : undefined}
                 >
                   <UserCircleIcon size={20} aria-hidden="true" />
-                  <span className="sr-only sm:not-sr-only">{t.nav.account}</span>
+                  <span className="sr-only sm:not-sr-only">
+                    <StableText pick={t => t.nav.account} align="start" />
+                  </span>
                 </Link>
                 <button type="button" onClick={handleLogout} className={navLinkClass(false)}>
                   <SignOutIcon size={20} aria-hidden="true" />
-                  <span className="sr-only sm:not-sr-only">{t.nav.signOut}</span>
+                  <span className="sr-only sm:not-sr-only">
+                    <StableText pick={t => t.nav.signOut} align="start" />
+                  </span>
                 </button>
               </>
             ) : (
@@ -149,7 +154,9 @@ function App() {
               >
                 <SignInIcon size={20} aria-hidden="true" />
                 {/* Icon-only on phones, like the signed-in links, to leave room for the language switcher. */}
-                <span className="sr-only sm:not-sr-only">{t.nav.signIn}</span>
+                <span className="sr-only sm:not-sr-only">
+                  <StableText pick={t => t.nav.signIn} align="start" />
+                </span>
               </Link>
             )}
           </nav>

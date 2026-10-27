@@ -18,26 +18,33 @@ import { api, toErrorMessage } from '../services/api';
 import { useAuth } from './AuthContext';
 import { useToast } from './Toast';
 import RecipeImage from './RecipeImage';
-import { BackLink, Notice, PageLoader, Spinner, buttonStyles, cardClass } from './ui';
+import { BackLink, Notice, PageLoader, Spinner, StableText, buttonStyles, cardClass } from './ui';
 import { Link, navigate, paths, useScrollRestoration } from '../lib/router';
 import { useDocumentTitle, useRecipe } from '../lib/hooks';
 import { formatMinutes, hostnameOf, localizeRecipe, parseTags, safeHttpUrl, totalMinutes } from '../lib/recipe';
 import { scaleIngredient, servingOptions } from '../lib/servings';
-import { tagLabel, useLanguage, useT } from '../lib/i18n';
+import { tagLabel, useLanguage, useT, type Messages } from '../lib/i18n';
 
 interface Props {
   id: number;
 }
 
-function Stat({ icon, label, value }: Readonly<{ icon: ReactNode; label: string; value: string }>) {
+type Pick = (t: Messages) => string;
+
+// Label and value keep the room of their longest translation, so the stats row wraps the same in every language.
+function Stat({ icon, label, value }: Readonly<{ icon: ReactNode; label: Pick; value: Pick }>) {
   return (
     <div className="flex items-center gap-3">
       <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-brand-50 text-brand-600" aria-hidden="true">
         {icon}
       </span>
       <div>
-        <dt className="text-xs font-semibold uppercase tracking-wider text-stone-500">{label}</dt>
-        <dd className="font-semibold text-stone-900">{value}</dd>
+        <dt className="text-xs font-semibold uppercase tracking-wider text-stone-500">
+          <StableText pick={label} align="start" />
+        </dt>
+        <dd className="font-semibold text-stone-900">
+          <StableText pick={value} align="start" />
+        </dd>
       </div>
     </div>
   );
@@ -101,14 +108,14 @@ function ServingsControl({
           t.detail.asWritten
         ) : (
           <>
-            {t.detail.scaledFrom(original)} ·{' '}
+            <StableText pick={t => t.detail.scaledFrom(original)} align="start" /> ·{' '}
             <button
               type="button"
               onClick={() => onChange(original)}
               aria-label={t.detail.resetTo(original)}
               className="font-semibold text-brand-700 hover:text-brand-900"
             >
-              {t.detail.reset}
+              <StableText pick={t => t.detail.reset} align="start" />
             </button>
           </>
         )}
@@ -225,14 +232,35 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
       return next;
     });
 
+  const { prepTime, cookTime } = recipe;
   const stats = [
-    recipe.prepTime !== null && { label: t.detail.prep, value: formatMinutes(recipe.prepTime, t), icon: <TimerIcon size={20} weight="duotone" /> },
-    recipe.cookTime !== null && { label: t.detail.cook, value: formatMinutes(recipe.cookTime, t), icon: <FireIcon size={20} weight="duotone" /> },
+    prepTime !== null && {
+      key: 'prep',
+      label: (t: Messages) => t.detail.prep,
+      value: (t: Messages) => formatMinutes(prepTime, t),
+      icon: <TimerIcon size={20} weight="duotone" />,
+    },
+    cookTime !== null && {
+      key: 'cook',
+      label: (t: Messages) => t.detail.cook,
+      value: (t: Messages) => formatMinutes(cookTime, t),
+      icon: <FireIcon size={20} weight="duotone" />,
+    },
     minutes !== null &&
-      recipe.prepTime !== null &&
-      recipe.cookTime !== null && { label: t.detail.total, value: formatMinutes(minutes, t), icon: <ClockIcon size={20} weight="duotone" /> },
-    recipe.servings !== null && { label: t.detail.yield, value: t.format.servings(recipe.servings), icon: <UsersIcon size={20} weight="duotone" /> },
-  ].filter(Boolean) as { label: string; value: string; icon: ReactNode }[];
+      prepTime !== null &&
+      cookTime !== null && {
+        key: 'total',
+        label: (t: Messages) => t.detail.total,
+        value: (t: Messages) => formatMinutes(minutes, t),
+        icon: <ClockIcon size={20} weight="duotone" />,
+      },
+    baseServings !== null && {
+      key: 'yield',
+      label: (t: Messages) => t.detail.yield,
+      value: (t: Messages) => t.format.servings(baseServings),
+      icon: <UsersIcon size={20} weight="duotone" />,
+    },
+  ].filter(Boolean) as { key: string; label: Pick; value: Pick; icon: ReactNode }[];
 
   return (
     <article className="mx-auto max-w-5xl">
@@ -269,7 +297,7 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
                           : 'bg-brand-50 text-brand-700 hover:bg-brand-100'
                       }`}
                     >
-                      {tagLabel(tag, t)}
+                      <StableText pick={t => tagLabel(tag, t)} />
                     </Link>
                   </li>
                 ))}
@@ -295,8 +323,8 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
         <div className="flex flex-col gap-5 border-b border-stone-100 bg-stone-50/60 px-6 py-5 md:flex-row md:items-center md:justify-between md:px-10">
           {stats.length > 0 || sourceUrl ? (
             <dl className="flex flex-wrap items-center gap-x-8 gap-y-4">
-              {stats.map(stat => (
-                <Stat key={stat.label} {...stat} />
+              {stats.map(({ key, ...stat }) => (
+                <Stat key={key} {...stat} />
               ))}
               {sourceUrl && (
                 <div>
@@ -308,7 +336,7 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-white px-3.5 py-2 text-sm font-semibold text-brand-700 transition-colors hover:border-brand-300 hover:bg-brand-50"
                     >
-                      {t.detail.originalAt(hostnameOf(sourceUrl))}
+                      <StableText pick={t => t.detail.originalAt(hostnameOf(sourceUrl))} align="start" wrap />
                       <ArrowSquareOutIcon size={16} weight="bold" aria-hidden="true" />
                       <span className="sr-only">{t.detail.opensInNewTab}</span>
                     </a>
@@ -346,51 +374,55 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
                     </p>
                   </div>
                 </div>
-                <div className="mt-4 flex gap-2 sm:justify-end">
+                <div className="mt-4 flex flex-wrap gap-2 sm:justify-end">
                   <button
                     ref={cancelDeleteRef}
                     type="button"
                     onClick={() => setConfirmingDelete(false)}
                     disabled={deleting}
-                    className={`${buttonStyles.secondary} flex-1 sm:flex-none`}
+                    className={`${buttonStyles.secondary} grow sm:grow-0`}
                   >
-                    {t.common.cancel}
+                    <StableText pick={t => t.common.cancel} />
                   </button>
                   <button
                     type="button"
                     onClick={handleDelete}
                     disabled={deleting}
-                    className={`${buttonStyles.danger} flex-1 sm:flex-none`}
+                    className={`${buttonStyles.danger} grow sm:grow-0`}
                   >
-                    {deleting ? <Spinner className="size-4.5" /> : <TrashIcon size={18} weight="bold" aria-hidden="true" />}
-                    {deleting ? t.detail.deleting : t.detail.delete}
+                    <StableText
+                      pick={t => (deleting ? t.detail.deleting : t.detail.delete)}
+                      icon={deleting ? <Spinner className="size-4.5" /> : <TrashIcon size={18} weight="bold" aria-hidden="true" />}
+                    />
                   </button>
                 </div>
               </m.div>
             ) : (
-              <div className="flex flex-wrap items-center gap-2">
+              // Favorite spans the row above Edit and Delete, so it's always as wide as those two together.
+              // Narrower side padding on phones lets Edit and Delete share a row from 360px up.
+              <div className="grid grid-cols-[auto_auto] gap-2">
                 <button
                   type="button"
                   onClick={handleFavorite}
                   disabled={favoritePending}
                   aria-pressed={recipe.isFavorite}
-                  className={`${buttonStyles.secondary} ${recipe.isFavorite ? 'border-accent-200! bg-accent-50! text-accent-700!' : ''}`}
+                  className={`${buttonStyles.secondary} col-span-2 max-sm:px-3 ${recipe.isFavorite ? 'border-accent-200! bg-accent-50! text-accent-700!' : ''}`}
                 >
-                  <HeartIcon size={18} weight={recipe.isFavorite ? 'fill' : 'bold'} aria-hidden="true" />
-                  {recipe.isFavorite ? t.common.favorite : t.common.addToFavorites}
+                  <StableText
+                    pick={t => (recipe.isFavorite ? t.common.favorite : t.common.addToFavorites)}
+                    icon={<HeartIcon size={18} weight={recipe.isFavorite ? 'fill' : 'bold'} aria-hidden="true" />}
+                  />
                 </button>
-                <Link to={paths.edit(recipe.id)} className={buttonStyles.secondary}>
-                  <PencilSimpleIcon size={18} weight="bold" aria-hidden="true" />
-                  {t.detail.edit}
+                <Link to={paths.edit(recipe.id)} className={`${buttonStyles.secondary} max-sm:px-3`}>
+                  <StableText pick={t => t.detail.edit} icon={<PencilSimpleIcon size={18} weight="bold" aria-hidden="true" />} />
                 </Link>
                 <button
                   ref={deleteButtonRef}
                   type="button"
                   onClick={() => setConfirmingDelete(true)}
-                  className={`${buttonStyles.secondary} hover:border-red-200! hover:bg-red-50! hover:text-red-700!`}
+                  className={`${buttonStyles.secondary} max-sm:px-3 hover:border-red-200! hover:bg-red-50! hover:text-red-700!`}
                 >
-                  <TrashIcon size={18} weight="bold" aria-hidden="true" />
-                  {t.detail.delete}
+                  <StableText pick={t => t.detail.delete} icon={<TrashIcon size={18} weight="bold" aria-hidden="true" />} />
                 </button>
               </div>
             ))}
@@ -415,7 +447,7 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
                   onClick={() => setChecked(new Set())}
                   className="text-sm font-medium text-brand-700 hover:text-brand-900"
                 >
-                  {t.detail.clearChecked}
+                  <StableText pick={t => t.detail.clearChecked} />
                 </button>
               )}
             </div>
