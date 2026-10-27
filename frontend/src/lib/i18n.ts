@@ -81,6 +81,9 @@ export function useT(): Messages {
 /** Interface text for code outside React (e.g. the API client). Read it when the text is needed. */
 export const getMessages = (): Messages => MESSAGES[current];
 
+/** Interface text in a specific language, e.g. to reserve room for the longest translation. */
+export const messagesFor = (language: Language): Messages => MESSAGES[language];
+
 /** Locale for dates and numbers: the browser's regional variant of the language ("nl-BE") if it has one. */
 export const localeFor = (language: Language): string =>
   browserLanguages().find(tag => baseLanguage(tag) === language) ?? language;

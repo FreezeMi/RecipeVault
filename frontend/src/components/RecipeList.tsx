@@ -6,7 +6,7 @@ import RecipeCard from './RecipeCard';
 import { api, getCachedRecipes, toErrorMessage } from '../services/api';
 import { useAuth } from './AuthContext';
 import { useToast } from './Toast';
-import { Notice, PageHeading, Spinner, buttonStyles } from './ui';
+import { Notice, PageHeading, Spinner, StableText, buttonStyles } from './ui';
 import { RECIPE_CATEGORIES } from '../constants';
 import { Link, navigate, paths, useLocation, useScrollRestoration } from '../lib/router';
 import { useDocumentTitle } from '../lib/hooks';
@@ -163,8 +163,7 @@ export default function RecipeList() {
       <PageHeading title={t.list.title} subtitle={subtitle}>
         {authenticated && (
           <Link to={paths.new()} className={`${buttonStyles.primary} sm:hidden`}>
-            <PlusIcon size={18} weight="bold" aria-hidden="true" />
-            {t.common.newRecipe}
+            <StableText pick={t => t.common.newRecipe} icon={<PlusIcon size={18} weight="bold" aria-hidden="true" />} />
           </Link>
         )}
       </PageHeading>
@@ -239,7 +238,7 @@ export default function RecipeList() {
         <div className="flex items-center justify-between text-sm text-stone-600">
           <p aria-live="polite">{t.list.results(count)}</p>
           <button type="button" onClick={clearFilters} className="font-medium text-brand-700 hover:text-brand-900">
-            {t.list.clearFilters}
+            <StableText pick={t => t.list.clearFilters} />
           </button>
         </div>
       )}
