@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
-import { DownloadSimpleIcon, UploadSimpleIcon, ShieldCheckIcon, DatabaseIcon, UserCircleIcon } from '@phosphor-icons/react';
+import { DownloadSimpleIcon, UploadSimpleIcon, ShieldCheckIcon, DatabaseIcon, UserCircleIcon, EyeSlashIcon } from '@phosphor-icons/react';
 import { useAuth } from './AuthContext';
 import { useToast } from './Toast';
 import { api, authApi, toErrorMessage } from '../services/api';
@@ -12,7 +12,7 @@ import { Notice, PageHeading, Spinner, StableText, buttonStyles, cardClass, inpu
 const MIN_PASSWORD_LENGTH = 12;
 const MAX_BACKUP_BYTES = 15 * 1024 * 1024; // matches the API's upload body limit
 
-type Message = { text: string; tone: 'error' | 'success' } | null;
+type Message = { text: string; tone: 'error' | 'success' | 'info' } | null;
 
 // The description keeps the height of its longest translation, so a block doesn't grow or shrink when switching language.
 function Section({
@@ -73,25 +73,31 @@ export default function Account() {
 
   // --- Backup & restore ---
   const [dataMessage, setDataMessage] = useState<Message>(null);
-  const [dataBusy, setDataBusy] = useState<'download' | 'upload' | null>(null);
+  const [dataBusy, setDataBusy] = useState<'download' | 'downloadHidden' | 'upload' | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleDownload = async () => {
-    setDataBusy('download');
+  // Hidden recipes get a file of their own, so the normal backup is safe to share or keep somewhere
+  // public. Both files restore through the same button: each recipe carries its own hidden flag.
+  const handleDownload = async (hidden: boolean) => {
+    setDataBusy(hidden ? 'downloadHidden' : 'download');
     setDataMessage(null);
     try {
-      const recipes = await api.getRecipes();
+      const recipes = (await api.getRecipes()).filter(recipe => Boolean(recipe.isHidden) === hidden);
+      if (hidden && recipes.length === 0) {
+        setDataMessage({ text: t.account.noHiddenRecipes, tone: 'info' });
+        return;
+      }
       const blob = new Blob([JSON.stringify(recipes, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `recipe_vault_backup_${new Date().toISOString().slice(0, 10)}.json`;
+      link.download = `recipe_vault_${hidden ? 'hidden_backup' : 'backup'}_${new Date().toISOString().slice(0, 10)}.json`;
       document.body.appendChild(link);
       link.click();
       link.remove();
       // Revoke on the next tick so the download has started in every browser.
       setTimeout(() => URL.revokeObjectURL(url), 0);
-      setDataMessage({ text: t.account.downloaded(recipes.length), tone: 'success' });
+      setDataMessage({ text: hidden ? t.account.downloadedHidden(recipes.length) : t.account.downloaded(recipes.length), tone: 'success' });
     } catch (err) {
       setDataMessage({ text: toErrorMessage(err, t.account.downloadFailed), tone: 'error' });
     } finally {
@@ -198,7 +204,7 @@ export default function Account() {
           </div>
         )}
         <div className="flex flex-col gap-3 sm:flex-row">
-          <button type="button" onClick={handleDownload} disabled={dataBusy !== null} className={`${buttonStyles.primary} flex-1`}>
+          <button type="button" onClick={() => handleDownload(false)} disabled={dataBusy !== null} className={`${buttonStyles.primary} flex-1`}>
             {dataBusy === 'download' ? <Spinner className="size-5" /> : <DownloadSimpleIcon size={20} weight="bold" aria-hidden="true" />}
             {dataBusy === 'download' ? t.account.preparing : t.account.download}
           </button>
@@ -221,6 +227,15 @@ export default function Account() {
             aria-hidden="true"
           />
         </div>
+        <button
+          type="button"
+          onClick={() => handleDownload(true)}
+          disabled={dataBusy !== null}
+          className={`${buttonStyles.secondary} mt-3 w-full`}
+        >
+          {dataBusy === 'downloadHidden' ? <Spinner className="size-5" /> : <EyeSlashIcon size={20} weight="bold" aria-hidden="true" />}
+          {dataBusy === 'downloadHidden' ? t.account.preparing : t.account.downloadHidden}
+        </button>
       </Section>
 
       <Section

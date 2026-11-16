@@ -9,6 +9,7 @@ The application allows you to create, edit, manage, and discover your personal c
 - **Full CRUD functionality:** Add, view, edit, and delete recipes.
 - **Data Backup & Restore:** Export your entire vault as a JSON file and restore it later. Restoring only ever *adds* recipes: titles already in the vault (case-insensitive) are skipped, and the whole import is written atomically.
 - **Authentication:** Protected recipe management. Public visitors can view and search recipes, while only the authenticated admin can add, edit, or delete them.
+- **Hidden Recipes:** The admin can hide a recipe from the edit form or with the button on its page. A hidden recipe is filtered out on the server: visitors never receive it in lists, search or filters, and its address answers with the same 404 as a recipe that doesn't exist. The admin sees it everywhere with a "Hidden" marker. Hidden recipes are left out of the normal backup and download as a file of their own (`recipe_vault_hidden_backup_*.json`, git-ignored); restoring either file keeps each recipe's hidden state.
 - **Multi-Tag System & Favorites:** Assign multiple tags to any recipe (e.g., Breakfast, Dessert, Seafood, Vegan) and filter your vault effortlessly. Mark your best recipes as favorites.
 - **Smart Search:** Case-insensitive search across titles, descriptions, ingredients and tags. Filters live in the URL, so they survive refreshes and the Back button.
 - **Shareable URLs:** Every recipe has its own address (`/recipes/12`), so links, refreshes and browser navigation all work.

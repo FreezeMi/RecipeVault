@@ -83,7 +83,20 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
   next();
 };
 
-const isValidPassword = (value: unknown): value is string =>
+/**
+ * For public routes that show the admin more than visitors. Sets `req.user` when the request
+ * carries a valid session and never rejects; a request without a cookie costs no database query.
+ */
+export const optionalAuth = async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
+  const session = await resolveSession(req);
+  if (session) {
+    req.user = session.user;
+    req.sessionId = session.sessionId;
+  }
+  next();
+};
+
+const isValidPassword =(value: unknown): value is string =>
   typeof value === 'string' && value.length > 0 && Buffer.byteLength(value) <= 1024;
 
 router.post('/login', authLimiter, async (req: Request, res: Response): Promise<void> => {

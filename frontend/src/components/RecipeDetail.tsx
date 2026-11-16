@@ -13,6 +13,8 @@ import {
   ArrowClockwiseIcon,
   MinusIcon,
   PlusIcon,
+  EyeIcon,
+  EyeSlashIcon,
 } from '@phosphor-icons/react';
 import { api, toErrorMessage } from '../services/api';
 import { useAuth } from './AuthContext';
@@ -137,6 +139,7 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [favoritePending, setFavoritePending] = useState(false);
+  const [hiddenPending, setHiddenPending] = useState(false);
   // Ticked ingredients as "language:index", because the lists of two languages need not line up.
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   // null = the recipe's own serving count.
@@ -223,6 +226,19 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
     }
   };
 
+  const handleHidden = async () => {
+    setHiddenPending(true);
+    try {
+      const updated = await api.setRecipeHidden(recipe.id, !recipe.isHidden);
+      setRecipe(updated);
+      toast.success(updated.isHidden ? t.detail.nowHidden : t.detail.nowVisible);
+    } catch (err) {
+      toast.error(toErrorMessage(err, t.errors.updateHidden));
+    } finally {
+      setHiddenPending(false);
+    }
+  };
+
   const toggleIngredient = (index: number) =>
     setChecked(current => {
       const next = new Set(current);
@@ -265,6 +281,16 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
   return (
     <article className="mx-auto max-w-5xl">
       <BackLink to={paths.list()}>{t.common.backToRecipes}</BackLink>
+
+      {/* Dark like the badge on the card, so it isn't mistaken for the translation notice below. */}
+      {recipe.isHidden && (
+        <p role="status" className="mb-4 flex items-start gap-3 rounded-2xl bg-stone-900 p-4 text-sm leading-relaxed text-stone-200">
+          <EyeSlashIcon size={20} weight="bold" className="mt-px shrink-0 text-white" aria-hidden="true" />
+          <span>
+            <span className="font-semibold text-white">{t.common.hidden}</span> · {t.detail.hiddenNotice}
+          </span>
+        </p>
+      )}
 
       {isFallback && (
         <div className="mb-4">
@@ -398,7 +424,7 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
                 </div>
               </m.div>
             ) : (
-              // Favorite spans the row above Edit and Delete, so it's always as wide as those two together.
+              // Favorite and Hide each span a row above Edit and Delete, so they're always as wide as those two together.
               // Narrower side padding on phones lets Edit and Delete share a row from 360px up.
               <div className="grid grid-cols-[auto_auto] gap-2">
                 <button
@@ -411,6 +437,23 @@ export default function RecipeDetail({ id }: Readonly<Props>) {
                   <StableText
                     pick={t => (recipe.isFavorite ? t.common.favorite : t.common.addToFavorites)}
                     icon={<HeartIcon size={18} weight={recipe.isFavorite ? 'fill' : 'bold'} aria-hidden="true" />}
+                  />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleHidden}
+                  disabled={hiddenPending}
+                  className={`${buttonStyles.secondary} col-span-2 max-sm:px-3 ${recipe.isHidden ? 'border-stone-800! bg-stone-800! text-white!' : ''}`}
+                >
+                  <StableText
+                    pick={t => (recipe.isHidden ? t.detail.unhide : t.detail.hide)}
+                    icon={
+                      recipe.isHidden ? (
+                        <EyeIcon size={18} weight="bold" aria-hidden="true" />
+                      ) : (
+                        <EyeSlashIcon size={18} weight="bold" aria-hidden="true" />
+                      )
+                    }
                   />
                 </button>
                 <Link to={paths.edit(recipe.id)} className={`${buttonStyles.secondary} max-sm:px-3`}>

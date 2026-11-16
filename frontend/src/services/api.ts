@@ -93,6 +93,12 @@ export const recipeListKey = ({ search, tag, favorite }: RecipeFilters = {}) => 
 
 export const getCachedRecipes = (filters: RecipeFilters) => listCache.get(recipeListKey(filters));
 
+/**
+ * Lists fetched as the admin contain hidden recipes, so the cache must not outlive the session it
+ * was filled in. Called whenever the signed-in user changes.
+ */
+export const clearRecipeCache = () => listCache.clear();
+
 const invalidating = <T>(promise: Promise<T>) =>
   promise.then(result => {
     listCache.clear();
@@ -129,6 +135,12 @@ export const api = {
 
   toggleFavorite(id: number): Promise<Recipe> {
     return invalidating(request(`/recipes/${id}/favorite`, { method: 'PATCH', errorMessage: getMessages().errors.updateFavorite }));
+  },
+
+  setRecipeHidden(id: number, isHidden: boolean): Promise<Recipe> {
+    return invalidating(
+      request(`/recipes/${id}/hidden`, { method: 'PATCH', json: { isHidden }, errorMessage: getMessages().errors.updateHidden }),
+    );
   },
 
   uploadRecipes(recipes: unknown[]): Promise<UploadResult> {

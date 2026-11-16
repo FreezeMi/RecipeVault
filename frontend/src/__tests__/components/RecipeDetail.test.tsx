@@ -11,7 +11,7 @@ vi.mock('../../services/api', async importOriginal => {
   const actual = await importOriginal<typeof import('../../services/api')>();
   return {
     ...actual,
-    api: { getRecipe: vi.fn(), deleteRecipe: vi.fn(), toggleFavorite: vi.fn() },
+    api: { getRecipe: vi.fn(), deleteRecipe: vi.fn(), toggleFavorite: vi.fn(), setRecipeHidden: vi.fn() },
   };
 });
 
@@ -36,6 +36,7 @@ const recipe: Recipe = {
   language: 'en',
   translations: null,
   isFavorite: false,
+  isHidden: false,
   createdAt: '2024-01-01T00:00:00.000Z',
   updatedAt: '2024-01-01T00:00:00.000Z',
 };
@@ -58,6 +59,7 @@ beforeEach(() => {
   vi.mocked(api.getRecipe).mockReset().mockResolvedValue(recipe);
   vi.mocked(api.deleteRecipe).mockReset();
   vi.mocked(api.toggleFavorite).mockReset();
+  vi.mocked(api.setRecipeHidden).mockReset();
   signedIn(true);
   window.history.replaceState(null, '', '/recipes/7');
 });
@@ -392,5 +394,51 @@ describe('languages', () => {
     expect(screen.getByRole('heading', { name: 'Soup' })).toBeInTheDocument();
     expect(screen.getAllByRole('checkbox')[0]).toBeChecked();
     expect(api.getRecipe).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('hidden recipes', () => {
+  const notice = 'Only you can see this recipe, while you are signed in.';
+
+  test('the admin can hide a recipe from its page, which marks it as hidden', async () => {
+    vi.mocked(api.setRecipeHidden).mockResolvedValueOnce({ ...recipe, isHidden: true });
+    await renderDetail();
+    expect(screen.queryByText(notice, { exact: false })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide recipe' }));
+
+    expect(await screen.findByRole('button', { name: 'Unhide recipe' })).toBeInTheDocument();
+    expect(api.setRecipeHidden).toHaveBeenCalledWith(7, true);
+    expect(screen.getByText(notice, { exact: false })).toBeInTheDocument();
+    expect(screen.getByText('Recipe hidden. Visitors can no longer see it.')).toBeInTheDocument();
+  });
+
+  test('a hidden recipe opens with the marker and can be made visible again', async () => {
+    vi.mocked(api.getRecipe).mockResolvedValue({ ...recipe, isHidden: true });
+    vi.mocked(api.setRecipeHidden).mockResolvedValueOnce(recipe);
+    await renderDetail();
+    expect(screen.getByText(notice, { exact: false })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Unhide recipe' }));
+
+    expect(await screen.findByRole('button', { name: 'Hide recipe' })).toBeInTheDocument();
+    expect(api.setRecipeHidden).toHaveBeenCalledWith(7, false);
+    expect(screen.queryByText(notice, { exact: false })).not.toBeInTheDocument();
+  });
+
+  test('a failed change leaves the recipe as it was and says so', async () => {
+    vi.mocked(api.setRecipeHidden).mockRejectedValueOnce(new ApiError(500, 'The server ran into a problem. Please try again.'));
+    await renderDetail();
+    fireEvent.click(screen.getByRole('button', { name: 'Hide recipe' }));
+
+    expect(await screen.findByText('The server ran into a problem. Please try again.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Hide recipe' })).toBeEnabled();
+    expect(screen.queryByText(notice, { exact: false })).not.toBeInTheDocument();
+  });
+
+  test('visitors get no hide control', async () => {
+    signedIn(false);
+    await renderDetail();
+    expect(screen.queryByRole('button', { name: /hide recipe/i })).not.toBeInTheDocument();
   });
 });

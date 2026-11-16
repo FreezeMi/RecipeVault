@@ -29,6 +29,7 @@ const recipe = (id: number, overrides: Partial<Recipe> = {}): Recipe => ({
   language: 'en',
   translations: null,
   isFavorite: false,
+  isHidden: false,
   createdAt: '2024-01-01T00:00:00.000Z',
   updatedAt: '2024-01-01T00:00:00.000Z',
   ...overrides,
@@ -129,4 +130,37 @@ test('switching language keeps the filters and does not refetch', async () => {
   expect(screen.getByRole('button', { name: 'Diner' })).toHaveAttribute('aria-pressed', 'true');
   expect(window.location.search).toBe('?q=soup&tag=Dinner');
   expect(api.getRecipes).toHaveBeenCalledTimes(1);
+});
+
+test('the admin sees hidden recipes marked as hidden', async () => {
+  vi.mocked(api.getRecipes).mockResolvedValue([recipe(1), recipe(2, { isHidden: true })]);
+  renderList(true);
+
+  await screen.findByRole('link', { name: 'Recipe 2' });
+  expect(screen.getAllByText('Hidden')).toHaveLength(1);
+});
+
+test('signing out takes the list off the screen at once and loads it again as a visitor', async () => {
+  let resolveVisitorList: (recipes: Recipe[]) => void = () => {};
+  vi.mocked(api.getRecipes)
+    .mockResolvedValueOnce([recipe(1), recipe(2, { title: 'Secret stew', isHidden: true })])
+    .mockReturnValueOnce(new Promise(resolve => (resolveVisitorList = resolve)));
+  const { rerender } = renderList(true);
+  await screen.findByRole('link', { name: 'Secret stew' });
+
+  vi.mocked(AuthContext.useAuth).mockReturnValue({ authenticated: false } as never);
+  rerender(
+    <ToastProvider>
+      <RecipeList />
+    </ToastProvider>,
+  );
+
+  // Gone before the new list arrives, not dimmed until it does.
+  expect(screen.queryByRole('link', { name: 'Secret stew' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Recipe 1' })).not.toBeInTheDocument();
+  await waitFor(() => expect(api.getRecipes).toHaveBeenCalledTimes(2));
+
+  await act(async () => resolveVisitorList([recipe(1)]));
+  expect(await screen.findByRole('link', { name: 'Recipe 1' })).toBeInTheDocument();
+  expect(screen.queryByText('Hidden')).not.toBeInTheDocument();
 });

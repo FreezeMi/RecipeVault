@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
-import { PlusIcon, XIcon, FloppyDiskIcon, ArrowUpIcon, ArrowDownIcon, HeartIcon } from '@phosphor-icons/react';
+import { PlusIcon, XIcon, FloppyDiskIcon, ArrowUpIcon, ArrowDownIcon, HeartIcon, EyeSlashIcon } from '@phosphor-icons/react';
 import type { Recipe, RecipeInput, RecipeText, RecipeTextInput } from '../types';
 import { api, ApiError, toErrorMessage } from '../services/api';
 import { RECIPE_CATEGORIES } from '../constants';
@@ -51,6 +51,7 @@ interface FormState {
   imageUrl: string;
   sourceUrl: string;
   isFavorite: boolean;
+  isHidden: boolean;
 }
 
 type SharedField = Exclude<keyof FormState, 'language' | 'texts'>;
@@ -89,6 +90,7 @@ const toFormState = (recipe: Recipe | undefined, newRecipeLanguage: Language): F
     imageUrl: recipe?.imageUrl ?? '',
     sourceUrl: recipe?.sourceUrl ?? '',
     isFavorite: recipe?.isFavorite ?? false,
+    isHidden: recipe?.isHidden ?? false,
   };
 };
 
@@ -175,6 +177,7 @@ const toPayload = (state: FormState): RecipeInput => {
     language: state.language,
     translations: Object.fromEntries(translations.map(([language, text]) => [language, toTextPayload(text)])),
     isFavorite: state.isFavorite,
+    isHidden: state.isHidden,
   };
 };
 
@@ -813,24 +816,51 @@ function RecipeEditor({ recipe }: Readonly<{ recipe?: Recipe }>) {
             </div>
 
             {isOriginal && (
-              <label htmlFor="isFavorite" className="group inline-flex cursor-pointer items-center gap-3">
-                <input
-                  id="isFavorite"
-                  type="checkbox"
-                  role="switch"
-                  className="peer sr-only"
-                  checked={form.isFavorite}
-                  onChange={e => update('isFavorite', e.target.checked)}
-                />
-                <span
-                  aria-hidden="true"
-                  className="relative h-7 w-12 rounded-full bg-stone-200 transition-colors after:absolute after:left-1 after:top-1 after:size-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:bg-accent-500 peer-checked:after:translate-x-5 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-600 peer-focus-visible:ring-offset-2"
-                />
-                <span className="inline-flex items-center gap-1.5 font-medium text-stone-800">
-                  <HeartIcon size={18} weight={form.isFavorite ? 'fill' : 'regular'} className="text-accent-600" aria-hidden="true" />
-                  {t.form.markFavorite}
-                </span>
-              </label>
+              <div className="flex flex-col items-start gap-4">
+                <label htmlFor="isFavorite" className="group inline-flex cursor-pointer items-center gap-3">
+                  <input
+                    id="isFavorite"
+                    type="checkbox"
+                    role="switch"
+                    className="peer sr-only"
+                    checked={form.isFavorite}
+                    onChange={e => update('isFavorite', e.target.checked)}
+                  />
+                  <span
+                    aria-hidden="true"
+                    className="relative h-7 w-12 rounded-full bg-stone-200 transition-colors after:absolute after:left-1 after:top-1 after:size-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:bg-accent-500 peer-checked:after:translate-x-5 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-600 peer-focus-visible:ring-offset-2"
+                  />
+                  <span className="inline-flex items-center gap-1.5 font-medium text-stone-800">
+                    <HeartIcon size={18} weight={form.isFavorite ? 'fill' : 'regular'} className="text-accent-600" aria-hidden="true" />
+                    {t.form.markFavorite}
+                  </span>
+                </label>
+
+                <div>
+                  <label htmlFor="isHidden" className="group inline-flex cursor-pointer items-center gap-3">
+                    <input
+                      id="isHidden"
+                      type="checkbox"
+                      role="switch"
+                      className="peer sr-only"
+                      checked={form.isHidden}
+                      onChange={e => update('isHidden', e.target.checked)}
+                      aria-describedby="isHidden-hint"
+                    />
+                    <span
+                      aria-hidden="true"
+                      className="relative h-7 w-12 shrink-0 rounded-full bg-stone-200 transition-colors after:absolute after:left-1 after:top-1 after:size-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:bg-stone-800 peer-checked:after:translate-x-5 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-600 peer-focus-visible:ring-offset-2"
+                    />
+                    <span className="inline-flex items-center gap-1.5 font-medium text-stone-800">
+                      <EyeSlashIcon size={18} weight={form.isHidden ? 'bold' : 'regular'} className="text-stone-600" aria-hidden="true" />
+                      {t.form.markHidden}
+                    </span>
+                  </label>
+                  <p id="isHidden-hint" className="mt-1.5 text-sm text-stone-500">
+                    {t.form.hiddenHint}
+                  </p>
+                </div>
+              </div>
             )}
           </section>
 

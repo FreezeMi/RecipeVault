@@ -47,6 +47,7 @@ test('Recipes API', async (t) => {
       request(app).put('/api/recipes/1').send(recipePayload()),
       request(app).delete('/api/recipes/1'),
       request(app).patch('/api/recipes/1/favorite'),
+      request(app).patch('/api/recipes/1/hidden').send({ isHidden: false }),
       request(app).post('/api/recipes/upload').send([]),
       request(app).get('/api/system/db-status'),
     ];
@@ -58,6 +59,7 @@ test('Recipes API', async (t) => {
     assert.equal(res.status, 201);
     recipeId = res.body.id;
     assert.equal(res.body.sourceUrl, 'https://example.com/recipe');
+    assert.equal(res.body.isHidden, false, 'recipes are visible unless hidden explicitly');
     assert.deepEqual(JSON.parse(res.body.tags), ['Breakfast', 'Dessert']);
     assert.deepEqual(JSON.parse(res.body.instructions), ['Mix', 'Fry']);
   });
@@ -189,6 +191,132 @@ test('Recipes API', async (t) => {
 
     const off = await auth(request(app).patch(`/api/recipes/${recipeId}/favorite`));
     assert.equal(off.body.isFavorite, false);
+  });
+
+  const ids = (res: request.Response): number[] => res.body.map((r: { id: number }) => r.id);
+  let hiddenId = 0;
+
+  await t.test('a hidden recipe is left out of every list, search and filter for visitors', async () => {
+    // Tagged and a favorite, so the tag and favorite filters are covered too.
+    const created = await auth(request(app).post('/api/recipes')).send(
+      recipePayload({ title: `${RUN} Secret Stew`, tags: ['Secret'], isFavorite: true, isHidden: true }),
+    );
+    assert.equal(created.status, 201);
+    assert.equal(created.body.isHidden, true);
+    hiddenId = created.body.id;
+
+    const queries = [{}, { search: RUN }, { search: `${RUN} secret` }, { search: RUN, tags: 'Secret' }, { search: RUN, favorite: 'true' }];
+    for (const query of queries) {
+      const label = JSON.stringify(query);
+
+      const visitor = await request(app).get('/api/recipes').query(query);
+      assert.equal(visitor.status, 200);
+      assert.ok(!ids(visitor).includes(hiddenId), `visitor ${label}`);
+      assert.ok(visitor.body.every((r: { isHidden: boolean }) => r.isHidden === false), `visitor ${label}`);
+
+      const admin = await auth(request(app).get('/api/recipes')).query(query);
+      assert.ok(ids(admin).includes(hiddenId), `admin ${label}`);
+    }
+
+    // The visitor's list is exactly the admin's list without the hidden recipe, so counts follow.
+    const visitor = await request(app).get('/api/recipes').query({ search: RUN });
+    const admin = await auth(request(app).get('/api/recipes')).query({ search: RUN });
+    assert.deepEqual(ids(visitor), ids(admin).filter(id => id !== hiddenId));
+  });
+
+  await t.test('a hidden recipe opened directly is a plain 404 for visitors and a normal recipe for the admin', async () => {
+    const direct = await request(app).get(`/api/recipes/${hiddenId}`);
+    const missing = await request(app).get('/api/recipes/2147483647');
+    assert.equal(direct.status, 404);
+    assert.deepEqual(direct.body, missing.body, 'indistinguishable from a recipe that does not exist');
+
+    const admin = await auth(request(app).get(`/api/recipes/${hiddenId}`));
+    assert.equal(admin.status, 200);
+    assert.equal(admin.body.title, `${RUN} Secret Stew`);
+    assert.equal(admin.body.isHidden, true);
+  });
+
+  await t.test('a forged cookie or a signed-out session sees what a visitor sees', async () => {
+    const forged = await request(app).get(`/api/recipes/${hiddenId}`).set('Cookie', 'token=not-a-session');
+    assert.equal(forged.status, 404);
+
+    const second = await login(user.email);
+    assert.equal((await request(app).get(`/api/recipes/${hiddenId}`).set('Cookie', second)).status, 200);
+    await request(app).post('/api/auth/logout').set('Cookie', second);
+
+    assert.equal((await request(app).get(`/api/recipes/${hiddenId}`).set('Cookie', second)).status, 404);
+    const list = await request(app).get('/api/recipes').query({ search: RUN }).set('Cookie', second);
+    assert.ok(!ids(list).includes(hiddenId));
+  });
+
+  await t.test('saving a hidden recipe without mentioning isHidden keeps it hidden', async () => {
+    const fields = { title: `${RUN} Secret Stew`, tags: ['Secret'], isFavorite: true };
+    const updated = await auth(request(app).put(`/api/recipes/${hiddenId}`)).send(recipePayload({ ...fields, description: 'Still secret' }));
+    assert.equal(updated.status, 200);
+    assert.equal(updated.body.description, 'Still secret');
+    assert.equal(updated.body.isHidden, true);
+    assert.equal((await request(app).get(`/api/recipes/${hiddenId}`)).status, 404);
+
+    // Favoriting it doesn't change who can see it either.
+    const favorite = await auth(request(app).patch(`/api/recipes/${hiddenId}/favorite`));
+    assert.equal(favorite.body.isHidden, true);
+  });
+
+  await t.test('the admin can unhide and hide a recipe, from the form and with the quick toggle', async () => {
+    const patch = (isHidden: unknown) => auth(request(app).patch(`/api/recipes/${hiddenId}/hidden`)).send({ isHidden });
+
+    const shown = await patch(false);
+    assert.equal(shown.status, 200);
+    assert.equal(shown.body.isHidden, false);
+    assert.equal((await request(app).get(`/api/recipes/${hiddenId}`)).status, 200);
+    assert.ok(ids(await request(app).get('/api/recipes').query({ search: RUN, tags: 'Secret' })).includes(hiddenId));
+
+    // Sent twice (a double click), it stays hidden instead of flipping back.
+    assert.equal((await patch(true)).body.isHidden, true);
+    assert.equal((await patch(true)).body.isHidden, true);
+    assert.equal((await request(app).get(`/api/recipes/${hiddenId}`)).status, 404);
+
+    for (const invalid of ['true', 1, null, undefined]) {
+      assert.equal((await patch(invalid)).status, 400, `isHidden: ${String(invalid)}`);
+    }
+    assert.equal((await auth(request(app).patch('/api/recipes/2147483647/hidden')).send({ isHidden: true })).status, 404);
+    assert.equal((await auth(request(app).patch('/api/recipes/abc/hidden')).send({ isHidden: true })).status, 400);
+
+    // The edit form sends the flag with the rest of the recipe.
+    const fields = { title: `${RUN} Secret Stew`, tags: ['Secret'] };
+    const viaForm = await auth(request(app).put(`/api/recipes/${hiddenId}`)).send(recipePayload({ ...fields, isHidden: false }));
+    assert.equal(viaForm.body.isHidden, false);
+    assert.equal((await request(app).get(`/api/recipes/${hiddenId}`)).status, 200);
+
+    const hiddenAgain = await auth(request(app).put(`/api/recipes/${hiddenId}`)).send(recipePayload({ ...fields, isHidden: true }));
+    assert.equal(hiddenAgain.body.isHidden, true);
+    assert.equal((await request(app).get(`/api/recipes/${hiddenId}`)).status, 404);
+
+    const notBoolean = await auth(request(app).put(`/api/recipes/${hiddenId}`)).send(recipePayload({ ...fields, isHidden: 'no' }));
+    assert.equal(notBoolean.status, 400);
+  });
+
+  await t.test('restoring a backup keeps hidden recipes hidden', async () => {
+    const backup = [
+      { title: `${RUN} Hidden Restore`, isHidden: true },
+      // Not a boolean: a restore repairs what it can, and here that means staying hidden.
+      { title: `${RUN} Hidden Damaged`, isHidden: 'true' },
+      { title: `${RUN} Visible Restore`, isHidden: false },
+      { title: `${RUN} Old Backup Restore` }, // from before recipes could be hidden
+    ];
+    const res = await auth(request(app).post('/api/recipes/upload')).send(backup);
+    assert.deepEqual(res.body, { success: true, count: 4, skipped: 0, invalid: 0 });
+
+    const visitor = await request(app).get('/api/recipes').query({ search: RUN });
+    const titles = visitor.body.map((r: { title: string }) => r.title);
+    assert.ok(!titles.includes(`${RUN} Hidden Restore`));
+    assert.ok(!titles.includes(`${RUN} Hidden Damaged`));
+    assert.ok(titles.includes(`${RUN} Visible Restore`));
+    assert.ok(titles.includes(`${RUN} Old Backup Restore`));
+
+    const admin = await auth(request(app).get('/api/recipes')).query({ search: RUN });
+    const hiddenTitles = admin.body.filter((r: { isHidden: boolean }) => r.isHidden).map((r: { title: string }) => r.title);
+    assert.deepEqual(hiddenTitles.sort(), [`${RUN} Hidden Damaged`, `${RUN} Hidden Restore`, `${RUN} Secret Stew`]);
   });
 
   await t.test('upload imports backups, skips duplicates (case-insensitive) and counts invalid rows', async () => {

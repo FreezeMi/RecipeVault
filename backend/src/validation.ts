@@ -60,6 +60,8 @@ export interface RecipeData {
   instructions: string;
   notes: string | null;
   isFavorite?: boolean;
+  // Left out when the payload doesn't mention it, so an update never unhides a recipe by accident.
+  isHidden?: boolean;
   // Left out when the payload doesn't mention them, so an update from a client that doesn't
   // know about languages keeps what is stored. A new recipe then gets the database defaults.
   language?: Language;
@@ -366,6 +368,13 @@ export function normalizeRecipeInput(input: unknown, mode: ValidationMode = 'str
 
   if (typeof body.isFavorite === 'boolean') data.isFavorite = body.isFavorite;
   else if (body.isFavorite !== undefined) check.fail('isFavorite must be a boolean.');
+
+  if (typeof body.isHidden === 'boolean') data.isHidden = body.isHidden;
+  else if (body.isHidden !== undefined && body.isHidden !== null) {
+    check.fail('isHidden must be a boolean.');
+    // A restore repairs instead of rejecting, and here the safe repair is to keep the recipe hidden.
+    data.isHidden = true;
+  }
 
   const language = normalizeLanguage(body.language, check);
   if (language) data.language = language;
