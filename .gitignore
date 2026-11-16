@@ -136,6 +136,8 @@ skills-lock.json
 
 # Other files
 info.txt
+# Backups of hidden recipes are private; never commit them
+recipe_vault_hidden_backup_*.json
 # Database check state
 .dbcheck.json
 

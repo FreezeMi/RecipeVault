@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { prisma } from './db';
-import { requireAuth } from './auth';
+import { optionalAuth, requireAuth } from './auth';
 import { HttpError } from './http';
 import { LIMITS, getQueryString, normalizeRecipeInput, parseId, titleKey } from './validation';
 
@@ -21,12 +21,16 @@ const requireValidRecipe = (body: unknown) => {
   return result.data;
 };
 
-router.get('/', async (req: Request, res: Response) => {
+// Hidden recipes exist only for the signed-in admin (the one account). Every public read adds this
+// to its query, so a hidden recipe is never loaded for a visitor, let alone sent. Needs optionalAuth.
+const visibleTo = (req: Request): Prisma.RecipeWhereInput => (req.user ? {} : { isHidden: false });
+
+router.get('/', optionalAuth, async (req: Request, res: Response) => {
   const search = getQueryString(req.query.search)?.slice(0, LIMITS.search);
   const tag = getQueryString(req.query.tags);
   const favorite = getQueryString(req.query.favorite);
 
-  const where: Prisma.RecipeWhereInput = {};
+  const where: Prisma.RecipeWhereInput = visibleTo(req);
 
   // Tags are stored as a JSON array string; matching the quoted value avoids partial matches.
   if (tag) where.tags = { contains: JSON.stringify(tag) };
@@ -50,8 +54,9 @@ router.get('/', async (req: Request, res: Response) => {
   res.json(recipes);
 });
 
-router.get('/:id', async (req: Request, res: Response) => {
-  const recipe = await prisma.recipe.findUnique({ where: { id: requireId(req) } });
+router.get('/:id', optionalAuth, async (req: Request, res: Response) => {
+  // To a visitor a hidden recipe is the same 404 as one that doesn't exist, so its existence isn't revealed.
+  const recipe = await prisma.recipe.findFirst({ where: { id: requireId(req), ...visibleTo(req) } });
   if (!recipe) throw new HttpError(404, 'Recipe not found');
   res.json(recipe);
 });
@@ -84,6 +89,17 @@ router.patch('/:id/favorite', requireAuth, async (req: Request, res: Response) =
     where: { id },
     data: { isFavorite: !recipe.isFavorite },
   });
+  res.json(updated);
+});
+
+// Sets the state instead of toggling it, so a repeated or double request can never unhide a recipe.
+router.patch('/:id/hidden', requireAuth, async (req: Request, res: Response) => {
+  const id = requireId(req);
+  const isHidden: unknown = req.body?.isHidden;
+  if (typeof isHidden !== 'boolean') throw new HttpError(400, 'isHidden must be a boolean.');
+
+  // A missing recipe surfaces as Prisma P2025, which the error handler maps to 404.
+  const updated = await prisma.recipe.update({ where: { id }, data: { isHidden } });
   res.json(updated);
 });
 

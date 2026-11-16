@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef, type ReactNode } from 'react';
-import { authApi, setUnauthorizedHandler } from '../services/api';
+import { authApi, clearRecipeCache, setUnauthorizedHandler } from '../services/api';
 import { useToast } from './Toast';
 import { getMessages } from '../lib/i18n';
 import type { User } from '../types';
@@ -19,14 +19,18 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUserState] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const toast = useToast();
   const userRef = useRef<User | null>(null);
 
-  useEffect(() => {
-    userRef.current = user;
-  }, [user]);
+  // The admin's recipe lists contain hidden recipes, so they're dropped the moment the signed-in
+  // user changes (sign-in, sign-out, expired session) and never shown to whoever comes next.
+  const setUser = useCallback((next: User | null) => {
+    if ((userRef.current?.id ?? null) !== (next?.id ?? null)) clearRecipeCache();
+    userRef.current = next;
+    setUserState(next);
+  }, []);
 
   const checkAuth = useCallback(async () => {
     try {
@@ -38,7 +42,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [setUser]);
 
   useEffect(() => {
     void checkAuth();
@@ -53,12 +57,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     });
     return () => setUnauthorizedHandler(null);
-  }, [toast]);
+  }, [toast, setUser]);
 
   const login = useCallback(async (email: string, password: string) => {
     const { user } = await authApi.login(email, password);
     setUser(user);
-  }, []);
+  }, [setUser]);
 
   const logout = useCallback(async () => {
     try {
@@ -68,9 +72,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setUser(null);
     }
-  }, []);
+  }, [setUser]);
 
-  const clearSession = useCallback(() => setUser(null), []);
+  const clearSession = useCallback(() => setUser(null), [setUser]);
 
   const value = useMemo(
     () => ({ authenticated: user !== null, user, loading, login, logout, clearSession, checkAuth }),

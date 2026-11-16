@@ -30,6 +30,7 @@ const savedRecipe = (overrides: Partial<Recipe> = {}): Recipe => ({
   language: 'en',
   translations: null,
   isFavorite: false,
+  isHidden: false,
   createdAt: '2024-01-01T00:00:00.000Z',
   updatedAt: '2024-01-01T00:00:00.000Z',
   ...overrides,
@@ -111,7 +112,24 @@ describe('new recipe', () => {
       language: 'en',
       translations: {},
       isFavorite: false,
+      isHidden: false,
     });
+  });
+
+  test('a new recipe can be saved as hidden', async () => {
+    vi.mocked(api.createRecipe).mockResolvedValueOnce(savedRecipe({ id: 42, isHidden: true }));
+    renderForm();
+
+    fireEvent.change(screen.getByLabelText(/Title/), { target: { value: 'Pancakes' } });
+    fireEvent.change(screen.getByLabelText('Ingredient 1 name'), { target: { value: 'eggs' } });
+    fireEvent.change(screen.getByLabelText('Step 1'), { target: { value: 'Whisk' } });
+    const hide = screen.getByRole('switch', { name: 'Hide from visitors' });
+    expect(hide).not.toBeChecked();
+    fireEvent.click(hide);
+    fireEvent.click(screen.getByRole('button', { name: 'Save recipe' }));
+
+    await waitFor(() => expect(api.createRecipe).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(api.createRecipe).mock.calls[0]![0]).toMatchObject({ title: 'Pancakes', isHidden: true });
   });
 });
 
@@ -331,5 +349,31 @@ describe('edit recipe', () => {
     await screen.findByLabelText(/Title/);
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(await screen.findByText('title must be at most 200 characters.')).toBeInTheDocument();
+  });
+});
+
+describe('hidden recipes', () => {
+  const editHidden = () => {
+    window.history.replaceState(null, '', '/recipes/7/edit');
+    vi.mocked(api.getRecipe).mockResolvedValue(savedRecipe({ isHidden: true }));
+    vi.mocked(api.updateRecipe).mockResolvedValue(savedRecipe());
+    renderForm(7);
+    return screen.findByRole('switch', { name: 'Hide from visitors' });
+  };
+
+  const save = async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(api.updateRecipe).toHaveBeenCalledTimes(1));
+    return vi.mocked(api.updateRecipe).mock.calls[0]![1];
+  };
+
+  test('editing a hidden recipe keeps it hidden', async () => {
+    expect(await editHidden()).toBeChecked();
+    expect(await save()).toMatchObject({ isHidden: true });
+  });
+
+  test('turning the switch off saves the recipe as visible', async () => {
+    fireEvent.click(await editHidden());
+    expect(await save()).toMatchObject({ isHidden: false });
   });
 });

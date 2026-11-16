@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { m } from 'motion/react';
-import { HeartIcon, ClockIcon, UsersIcon } from '@phosphor-icons/react';
+import { HeartIcon, ClockIcon, UsersIcon, EyeSlashIcon } from '@phosphor-icons/react';
 import type { Recipe } from '../types';
 import { Link, paths } from '../lib/router';
 import { formatMinutes, localizeRecipe, parseTags, totalMinutes } from '../lib/recipe';
@@ -38,6 +38,12 @@ export default function RecipeCard({ recipe, index = 0, onToggleFavorite, favori
           src={recipe.imageUrl}
           className="size-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.04]"
         />
+        {recipe.isHidden && (
+          <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-stone-900/90 px-3 py-1.5 text-xs font-semibold text-white shadow-sm">
+            <EyeSlashIcon size={14} weight="bold" aria-hidden="true" />
+            {t.common.hidden}
+          </span>
+        )}
         {tags.length > 0 && (
           <div className="absolute bottom-3 left-3 flex flex-wrap gap-1.5">
             {tags.slice(0, 2).map(tag => (

@@ -20,6 +20,7 @@ const mockRecipe: Recipe = {
   language: 'en',
   translations: null,
   isFavorite: false,
+  isHidden: false,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 };
@@ -82,4 +83,13 @@ test('shows the translation for the interface language, and marks untranslated t
 test('unsafe image URLs are never rendered', () => {
   const { container } = render(<RecipeCard recipe={{ ...mockRecipe, imageUrl: 'javascript:alert(1)' }} />);
   expect(container.querySelector('img')).toBeNull();
+});
+
+test('a hidden recipe is marked for the admin, and a visible one is not', () => {
+  const { unmount } = render(<RecipeCard recipe={{ ...mockRecipe, isHidden: true }} onToggleFavorite={vi.fn()} />);
+  expect(screen.getByText('Hidden')).toBeInTheDocument();
+  unmount();
+
+  render(<RecipeCard recipe={mockRecipe} onToggleFavorite={vi.fn()} />);
+  expect(screen.queryByText('Hidden')).not.toBeInTheDocument();
 });

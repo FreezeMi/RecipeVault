@@ -33,6 +33,8 @@ export interface Recipe {
   language: Language;
   translations: string | null; // JSON object of RecipeText (lists as arrays) keyed by language
   isFavorite: boolean;
+  /** Only ever true for the signed-in admin: the API doesn't send hidden recipes to visitors. */
+  isHidden: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -58,6 +60,7 @@ export interface RecipeInput extends RecipeTextInput {
   /** Replaces the stored translations; an empty object removes them. */
   translations: Partial<Record<Language, RecipeTextInput>>;
   isFavorite: boolean;
+  isHidden: boolean;
 }
 
 export interface RecipeFilters {

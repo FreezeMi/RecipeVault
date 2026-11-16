@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { api, ApiError, authApi, getCachedRecipes, setUnauthorizedHandler } from '../../services/api';
+import { api, ApiError, authApi, clearRecipeCache, getCachedRecipes, setUnauthorizedHandler } from '../../services/api';
 import { setLanguage } from '../../lib/i18n';
 
 const jsonResponse = (body: unknown, status = 200) =>
@@ -85,5 +85,30 @@ describe('api client', () => {
 
     await api.toggleFavorite(1);
     expect(getCachedRecipes({})).toBeUndefined();
+  });
+
+  test('hiding a recipe states the new value and invalidates the cached lists', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation((url: string) => Promise.resolve(jsonResponse(url.includes('hidden') ? { id: 3, isHidden: true } : [])));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await api.getRecipes({});
+    await api.setRecipeHidden(3, true);
+
+    const [url, init] = fetchMock.mock.calls[1]!;
+    expect(url).toMatch(/\/recipes\/3\/hidden$/);
+    expect(init.method).toBe('PATCH');
+    expect(JSON.parse(init.body)).toEqual({ isHidden: true });
+    expect(getCachedRecipes({})).toBeUndefined();
+  });
+
+  test('the cached lists can be dropped when the session changes', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse([{ id: 1, isHidden: true }])));
+    await api.getRecipes({ search: 'stew' });
+    expect(getCachedRecipes({ search: 'stew' })).toHaveLength(1);
+
+    clearRecipeCache();
+    expect(getCachedRecipes({ search: 'stew' })).toBeUndefined();
   });
 });

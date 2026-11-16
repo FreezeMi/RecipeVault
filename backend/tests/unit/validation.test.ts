@@ -136,7 +136,23 @@ test('rejects wrong types in strict mode', () => {
   invalid({ title: 'x', ingredients: { name: 'x' } });
   invalid({ title: 'x', instructions: [{ step: 1 }] });
   invalid({ title: 'x', isFavorite: 'yes' });
+  invalid({ title: 'x', isHidden: 'yes' });
   invalid({ title: 'x', description: 5 });
+});
+
+test('isHidden is kept only when the payload states it, and a restore never unhides by accident', () => {
+  assert.equal(valid({ title: 'x', isHidden: true }).isHidden, true);
+  assert.equal(valid({ title: 'x', isHidden: false }).isHidden, false);
+  // Left out: an update keeps the stored value and a new recipe gets the database default.
+  assert.equal('isHidden' in valid({ title: 'x' }), false);
+  assert.equal('isHidden' in valid({ title: 'x', isHidden: null }), false);
+
+  assert.equal(valid({ title: 'x', isHidden: true }, 'lenient').isHidden, true);
+  assert.equal(valid({ title: 'x', isHidden: false }, 'lenient').isHidden, false);
+  assert.equal('isHidden' in valid({ title: 'x' }, 'lenient'), false);
+  for (const damaged of ['true', 'false', 1, 0, {}]) {
+    assert.equal(valid({ title: 'x', isHidden: damaged }, 'lenient').isHidden, true, `isHidden: ${JSON.stringify(damaged)}`);
+  }
 });
 
 test('only keeps createdAt for restores, and only valid past dates', () => {

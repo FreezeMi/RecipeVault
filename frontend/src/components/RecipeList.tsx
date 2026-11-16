@@ -129,6 +129,17 @@ export default function RecipeList() {
     return () => controller.abort();
   }, [filters, attempt]);
 
+  // The list on screen was fetched as the admin and may contain hidden recipes. When the session
+  // ends while it's open, it goes at once and is fetched again as a visitor.
+  const wasAuthenticated = useRef(authenticated);
+  useEffect(() => {
+    if (wasAuthenticated.current && !authenticated) {
+      setRecipes(null);
+      setAttempt(n => n + 1);
+    }
+    wasAuthenticated.current = authenticated;
+  }, [authenticated]);
+
   useScrollRestoration(recipes !== null);
 
   const handleToggleFavorite = async (recipe: Recipe) => {
